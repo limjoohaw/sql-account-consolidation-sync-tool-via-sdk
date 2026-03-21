@@ -2,10 +2,12 @@
 
 import os
 import json
+import threading
 from dataclasses import dataclass, field, asdict
 from typing import Optional
 
 CONFIG_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.json")
+_config_lock = threading.Lock()
 
 
 @dataclass
@@ -59,31 +61,33 @@ class AppConfig:
 
 def load_config() -> AppConfig:
     """Load configuration from JSON file."""
-    if not os.path.exists(CONFIG_FILE):
-        return AppConfig()
+    with _config_lock:
+        if not os.path.exists(CONFIG_FILE):
+            return AppConfig()
 
-    with open(CONFIG_FILE, "r") as f:
-        data = json.load(f)
+        with open(CONFIG_FILE, "r") as f:
+            data = json.load(f)
 
-    config = AppConfig()
-    # Load consol DB config
-    if "consol_db" in data:
-        config.consol_db = ConsolDBConfig(**data["consol_db"])
+        config = AppConfig()
+        # Load consol DB config
+        if "consol_db" in data:
+            config.consol_db = ConsolDBConfig(**data["consol_db"])
 
-    # Load entities
-    valid_fields = {f for f in EntityConfig.__dataclass_fields__}
-    for ent_data in data.get("entities", []):
-        filtered = {k: v for k, v in ent_data.items() if k in valid_fields}
-        config.entities.append(EntityConfig(**filtered))
+        # Load entities
+        valid_fields = {f for f in EntityConfig.__dataclass_fields__}
+        for ent_data in data.get("entities", []):
+            filtered = {k: v for k, v in ent_data.items() if k in valid_fields}
+            config.entities.append(EntityConfig(**filtered))
 
-    return config
+        return config
 
 
 def save_config(config: AppConfig):
     """Save configuration to JSON file."""
-    data = {
-        "consol_db": asdict(config.consol_db),
-        "entities": [asdict(e) for e in config.entities],
-    }
-    with open(CONFIG_FILE, "w") as f:
-        json.dump(data, f, indent=4)
+    with _config_lock:
+        data = {
+            "consol_db": asdict(config.consol_db),
+            "entities": [asdict(e) for e in config.entities],
+        }
+        with open(CONFIG_FILE, "w") as f:
+            json.dump(data, f, indent=4)

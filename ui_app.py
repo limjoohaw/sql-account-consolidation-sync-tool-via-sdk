@@ -189,6 +189,7 @@ class App(ctk.CTk):
         self.sync_engine = None
         self._sync_thread = None
         self._company_categories = []  # Cache for consol DB company categories
+        self._ent_render_timer = None  # Debounce timer for entity search
         # (tooltip state managed per-icon via _NativeTooltip class)
 
         # Menu bar
@@ -440,7 +441,7 @@ class App(ctk.CTk):
         ctk.CTkLabel(search_frame, text="Search:", font=FONT_SECTION
                       ).grid(row=0, column=0, sticky="w", padx=(0, 5), pady=3)
         self.entity_search_var = ctk.StringVar()
-        self.entity_search_var.trace_add("write", lambda *_: self._refresh_entity_list())
+        self.entity_search_var.trace_add("write", lambda *_: self._ent_schedule_render())
         ctk.CTkEntry(search_frame, textvariable=self.entity_search_var,
                       width=350, placeholder_text="Filter by prefix or company name..."
                       ).grid(row=0, column=1, sticky="w", padx=5, pady=3)
@@ -499,6 +500,12 @@ class App(ctk.CTk):
 
         self.entity_widgets = []
         self._refresh_entity_list()
+
+    def _ent_schedule_render(self):
+        """Debounce entity search: re-render after 200ms idle."""
+        if self._ent_render_timer is not None:
+            self.after_cancel(self._ent_render_timer)
+        self._ent_render_timer = self.after(200, self._refresh_entity_list)
 
     def _refresh_entity_list(self):
         # Also refresh category tab entity dropdown if it exists
@@ -977,6 +984,7 @@ class App(ctk.CTk):
             self._cat_bulk_combo.configure(values=["(no categories loaded)"], state="disabled")
 
         # Read customers from source DB
+        conn = None
         try:
             conn = fdb.connect(
                 host=entity.fb_host,
@@ -995,11 +1003,13 @@ class App(ctk.CTk):
                 if code:
                     self._cat_customers.append((code, name, currency))
             cur.close()
-            conn.close()
         except Exception as e:
             messagebox.showerror("Connection Failed",
                                  f"Could not read customers from source DB.\n\n{e}")
             return
+        finally:
+            if conn:
+                conn.close()
 
         # Initialize pending map from saved config and clear checked state
         self._cat_pending_map = {}
@@ -1940,6 +1950,7 @@ class App(ctk.CTk):
                 return self._company_categories
             return []
 
+        conn = None
         try:
             conn = fdb.connect(
                 host=consol.fb_host,
@@ -1957,11 +1968,13 @@ class App(ctk.CTk):
                 if code:
                     self._company_categories.append({"code": code, "description": desc})
             cur.close()
-            conn.close()
         except Exception as e:
             messagebox.showerror("Connection Failed",
                                  f"Could not read categories from consol DB.\n\n{e}")
             self._company_categories = []
+        finally:
+            if conn:
+                conn.close()
 
         return self._company_categories
 

@@ -117,67 +117,73 @@ class SourceReader:
     def read_profile(self) -> SYProfile:
         """Read SY_PROFILE for entity prefix and company info."""
         cur = self.conn.cursor()
-        cur.execute("SELECT ALIAS, COMPANYNAME FROM SY_PROFILE")
-        row = cur.fetchone()
-        cur.close()
-        if row:
-            return SYProfile(alias=(row[0] or "").strip(), company_name=(row[1] or "").strip())
-        return SYProfile()
+        try:
+            cur.execute("SELECT ALIAS, COMPANYNAME FROM SY_PROFILE")
+            row = cur.fetchone()
+            if row:
+                return SYProfile(alias=(row[0] or "").strip(), company_name=(row[1] or "").strip())
+            return SYProfile()
+        finally:
+            cur.close()
 
     def read_customers(self) -> list:
         """Read all customers with billing branch details via JOIN."""
         cur = self.conn.cursor()
-        cur.execute("""
-            SELECT
-                A.CODE, A.COMPANYNAME, A.COMPANYCATEGORY, A.CURRENCYCODE,
-                B.ATTENTION, B.PHONE1, B.EMAIL,
-                B.ADDRESS1, B.ADDRESS2, B.ADDRESS3, B.ADDRESS4,
-                B.POSTCODE, B.CITY, B.STATE, B.COUNTRY
-            FROM AR_CUSTOMER A
-            INNER JOIN AR_CUSTOMERBRANCH B ON (A.CODE = B.CODE)
-            WHERE (B.BRANCHTYPE = 'B')
-            ORDER BY A.CODE
-        """)
-        customers = []
-        for row in cur.fetchall():
-            customers.append(CustomerRecord(
-                code=(row[0] or "").strip(),
-                company_name=(row[1] or "").strip(),
-                company_category=(row[2] or "").strip(),
-                currency_code=(row[3] or "").strip(),
-                attention=(row[4] or "").strip(),
-                phone1=(row[5] or "").strip(),
-                email=(row[6] or "").strip(),
-                address1=(row[7] or "").strip(),
-                address2=(row[8] or "").strip(),
-                address3=(row[9] or "").strip(),
-                address4=(row[10] or "").strip(),
-                postcode=(row[11] or "").strip(),
-                city=(row[12] or "").strip(),
-                state=(row[13] or "").strip(),
-                country=(row[14] or "").strip(),
-            ))
-        cur.close()
-        if self.logger:
-            self.logger.info(f"Read {len(customers)} customers from source")
-        return customers
+        try:
+            cur.execute("""
+                SELECT
+                    A.CODE, A.COMPANYNAME, A.COMPANYCATEGORY, A.CURRENCYCODE,
+                    B.ATTENTION, B.PHONE1, B.EMAIL,
+                    B.ADDRESS1, B.ADDRESS2, B.ADDRESS3, B.ADDRESS4,
+                    B.POSTCODE, B.CITY, B.STATE, B.COUNTRY
+                FROM AR_CUSTOMER A
+                INNER JOIN AR_CUSTOMERBRANCH B ON (A.CODE = B.CODE)
+                WHERE (B.BRANCHTYPE = 'B')
+                ORDER BY A.CODE
+            """)
+            customers = []
+            for row in cur.fetchall():
+                customers.append(CustomerRecord(
+                    code=(row[0] or "").strip(),
+                    company_name=(row[1] or "").strip(),
+                    company_category=(row[2] or "").strip(),
+                    currency_code=(row[3] or "").strip(),
+                    attention=(row[4] or "").strip(),
+                    phone1=(row[5] or "").strip(),
+                    email=(row[6] or "").strip(),
+                    address1=(row[7] or "").strip(),
+                    address2=(row[8] or "").strip(),
+                    address3=(row[9] or "").strip(),
+                    address4=(row[10] or "").strip(),
+                    postcode=(row[11] or "").strip(),
+                    city=(row[12] or "").strip(),
+                    state=(row[13] or "").strip(),
+                    country=(row[14] or "").strip(),
+                ))
+            if self.logger:
+                self.logger.info(f"Read {len(customers)} customers from source")
+            return customers
+        finally:
+            cur.close()
 
     def read_currencies(self) -> list:
         """Read all currencies from source CURRENCY table."""
         cur = self.conn.cursor()
-        cur.execute("SELECT CODE, DESCRIPTION, ISOCODE, SYMBOL FROM CURRENCY ORDER BY CODE")
-        currencies = []
-        for row in cur.fetchall():
-            currencies.append({
-                "code": (row[0] or "").strip(),
-                "description": (row[1] or "").strip(),
-                "isocode": (row[2] or "").strip(),
-                "symbol": (row[3] or "").strip(),
-            })
-        cur.close()
-        if self.logger:
-            self.logger.info(f"Read {len(currencies)} currencies from source")
-        return currencies
+        try:
+            cur.execute("SELECT CODE, DESCRIPTION, ISOCODE, SYMBOL FROM CURRENCY ORDER BY CODE")
+            currencies = []
+            for row in cur.fetchall():
+                currencies.append({
+                    "code": (row[0] or "").strip(),
+                    "description": (row[1] or "").strip(),
+                    "isocode": (row[2] or "").strip(),
+                    "symbol": (row[3] or "").strip(),
+                })
+            if self.logger:
+                self.logger.info(f"Read {len(currencies)} currencies from source")
+            return currencies
+        finally:
+            cur.close()
 
     def read_payment_methods(self) -> list:
         """Read payment methods with currency ISO codes from source DB.
@@ -185,28 +191,30 @@ class SourceReader:
         Includes home currency payment methods (----).
         """
         cur = self.conn.cursor()
-        cur.execute("""
-            SELECT A.CODE, A.JOURNAL, A.CURRENCYCODE, B.ISOCODE
-            FROM PMMETHOD A
-            INNER JOIN CURRENCY B ON (A.CURRENCYCODE=B.CODE)
-        """)
-        methods = []
-        for row in cur.fetchall():
-            pm_code = (row[0] or "").strip()
-            journal = (row[1] or "").strip()
-            isocode = (row[3] or "").strip()
-            currency_code = (row[2] or "").strip()
-            if pm_code and isocode:
-                methods.append({
-                    "pm_code": pm_code,
-                    "journal": journal,
-                    "currency_code": currency_code,
-                    "isocode": isocode,
-                })
-        cur.close()
-        if self.logger:
-            self.logger.info(f"Read {len(methods)} payment methods from source")
-        return methods
+        try:
+            cur.execute("""
+                SELECT A.CODE, A.JOURNAL, A.CURRENCYCODE, B.ISOCODE
+                FROM PMMETHOD A
+                INNER JOIN CURRENCY B ON (A.CURRENCYCODE=B.CODE)
+            """)
+            methods = []
+            for row in cur.fetchall():
+                pm_code = (row[0] or "").strip()
+                journal = (row[1] or "").strip()
+                isocode = (row[3] or "").strip()
+                currency_code = (row[2] or "").strip()
+                if pm_code and isocode:
+                    methods.append({
+                        "pm_code": pm_code,
+                        "journal": journal,
+                        "currency_code": currency_code,
+                        "isocode": isocode,
+                    })
+            if self.logger:
+                self.logger.info(f"Read {len(methods)} payment methods from source")
+            return methods
+        finally:
+            cur.close()
 
     def count_documents(self, doc_type: str, date_from: str = None, date_to: str = None) -> int:
         """Count AR documents of a given type for preview/dry run."""
@@ -226,10 +234,12 @@ class SourceReader:
             params.append(date_to)
 
         cur = self.conn.cursor()
-        cur.execute(sql, params)
-        count = cur.fetchone()[0]
-        cur.close()
-        return count
+        try:
+            cur.execute(sql, params)
+            count = cur.fetchone()[0]
+            return count
+        finally:
+            cur.close()
 
     def read_documents(self, doc_type: str, date_from: str = None,
                        date_to: str = None, last_synced: str = None) -> list:
@@ -265,39 +275,41 @@ class SourceReader:
         sql += " ORDER BY DOCDATE, DOCNO"
 
         cur = self.conn.cursor()
-        cur.execute(sql, params)
-        rows = cur.fetchall()
+        try:
+            cur.execute(sql, params)
+            rows = cur.fetchall()
 
-        documents = []
-        for row in rows:
-            dockey = row[0]
-            doc = ARDocRecord(
-                doc_type=doc_type,
-                doc_no=(row[1] or "").strip(),
-                doc_date=str(row[2]) if row[2] else "",
-                post_date=str(row[3]) if row[3] else "",
-                code=(row[4] or "").strip(),
-                description=(row[5] or "").strip(),
-                currency_code=(row[6] or "").strip(),
-                currency_rate=float(row[7] or 1),
-                amount=float(row[8] or 0),
-                local_amount=float(row[9] or 0),
-            )
+            documents = []
+            for row in rows:
+                dockey = row[0]
+                doc = ARDocRecord(
+                    doc_type=doc_type,
+                    doc_no=(row[1] or "").strip(),
+                    doc_date=str(row[2]) if row[2] else "",
+                    post_date=str(row[3]) if row[3] else "",
+                    code=(row[4] or "").strip(),
+                    description=(row[5] or "").strip(),
+                    currency_code=(row[6] or "").strip(),
+                    currency_rate=float(row[7] or 1),
+                    amount=float(row[8] or 0),
+                    local_amount=float(row[9] or 0),
+                )
 
-            # Read detail lines
-            if detail_table:
-                doc.details = self._read_details(dockey, detail_table)
+                # Read detail lines
+                if detail_table:
+                    doc.details = self._read_details(dockey, detail_table)
 
-            # Read knock-offs for CN and CT (both knock off IV/DN)
-            if doc_type in ("CN", "CT"):
-                doc.knockoffs = self._read_knockoffs(dockey, from_doc_type=doc_type)
+                # Read knock-offs for CN and CT (both knock off IV/DN)
+                if doc_type in ("CN", "CT"):
+                    doc.knockoffs = self._read_knockoffs(dockey, from_doc_type=doc_type)
 
-            documents.append(doc)
+                documents.append(doc)
 
-        cur.close()
-        if self.logger:
-            self.logger.info(f"Read {len(documents)} {doc_type} documents from source")
-        return documents
+            if self.logger:
+                self.logger.info(f"Read {len(documents)} {doc_type} documents from source")
+            return documents
+        finally:
+            cur.close()
 
     def _read_payments(self, date_from: str = None, date_to: str = None) -> list:
         """Read AR_PM payments (only non-cancelled)."""
@@ -321,32 +333,34 @@ class SourceReader:
         sql += " ORDER BY DOCDATE, DOCNO"
 
         cur = self.conn.cursor()
-        cur.execute(sql, params)
-        rows = cur.fetchall()
+        try:
+            cur.execute(sql, params)
+            rows = cur.fetchall()
 
-        documents = []
-        for row in rows:
-            dockey = row[0]
-            doc = ARDocRecord(
-                doc_type="PM",
-                doc_no=(row[1] or "").strip(),
-                doc_date=str(row[2]) if row[2] else "",
-                code=(row[3] or "").strip(),
-                description=(row[4] or "").strip(),
-                currency_code=(row[5] or "").strip(),
-                currency_rate=float(row[6] or 1),
-                amount=float(row[7] or 0),
-                local_amount=float(row[8] or 0),
-                payment_method=(row[9] or "").strip(),
-                cheque_no=(row[10] or "").strip(),
-            )
-            doc.knockoffs = self._read_knockoffs(dockey)
-            documents.append(doc)
+            documents = []
+            for row in rows:
+                dockey = row[0]
+                doc = ARDocRecord(
+                    doc_type="PM",
+                    doc_no=(row[1] or "").strip(),
+                    doc_date=str(row[2]) if row[2] else "",
+                    code=(row[3] or "").strip(),
+                    description=(row[4] or "").strip(),
+                    currency_code=(row[5] or "").strip(),
+                    currency_rate=float(row[6] or 1),
+                    amount=float(row[7] or 0),
+                    local_amount=float(row[8] or 0),
+                    payment_method=(row[9] or "").strip(),
+                    cheque_no=(row[10] or "").strip(),
+                )
+                doc.knockoffs = self._read_knockoffs(dockey)
+                documents.append(doc)
 
-        cur.close()
-        if self.logger:
-            self.logger.info(f"Read {len(documents)} PM documents from source")
-        return documents
+            if self.logger:
+                self.logger.info(f"Read {len(documents)} PM documents from source")
+            return documents
+        finally:
+            cur.close()
 
     def _read_refunds(self, date_from: str = None, date_to: str = None) -> list:
         """Read AR_CF customer refunds (only non-cancelled)."""
@@ -370,79 +384,82 @@ class SourceReader:
         sql += " ORDER BY DOCDATE, DOCNO"
 
         cur = self.conn.cursor()
-        cur.execute(sql, params)
-        rows = cur.fetchall()
+        try:
+            cur.execute(sql, params)
+            rows = cur.fetchall()
 
-        documents = []
-        for row in rows:
-            dockey = row[0]
-            doc = ARDocRecord(
-                doc_type="CF",
-                doc_no=(row[1] or "").strip(),
-                doc_date=str(row[2]) if row[2] else "",
-                code=(row[3] or "").strip(),
-                description=(row[4] or "").strip(),
-                currency_code=(row[5] or "").strip(),
-                currency_rate=float(row[6] or 1),
-                amount=float(row[7] or 0),
-                local_amount=float(row[8] or 0),
-                payment_method=(row[9] or "").strip(),
-                cheque_no=(row[10] or "").strip(),
-            )
-            doc.knockoffs = self._read_knockoffs(dockey, from_doc_type="CF")
-            documents.append(doc)
+            documents = []
+            for row in rows:
+                dockey = row[0]
+                doc = ARDocRecord(
+                    doc_type="CF",
+                    doc_no=(row[1] or "").strip(),
+                    doc_date=str(row[2]) if row[2] else "",
+                    code=(row[3] or "").strip(),
+                    description=(row[4] or "").strip(),
+                    currency_code=(row[5] or "").strip(),
+                    currency_rate=float(row[6] or 1),
+                    amount=float(row[7] or 0),
+                    local_amount=float(row[8] or 0),
+                    payment_method=(row[9] or "").strip(),
+                    cheque_no=(row[10] or "").strip(),
+                )
+                doc.knockoffs = self._read_knockoffs(dockey, from_doc_type="CF")
+                documents.append(doc)
 
-        cur.close()
-        if self.logger:
-            self.logger.info(f"Read {len(documents)} CF documents from source")
-        return documents
+            if self.logger:
+                self.logger.info(f"Read {len(documents)} CF documents from source")
+            return documents
+        finally:
+            cur.close()
 
     def _read_details(self, dockey: int, detail_table: str) -> list:
         """Read document detail lines."""
         cur = self.conn.cursor()
-        cur.execute(f"""
-            SELECT SEQ, ACCOUNT, DESCRIPTION,
-                   TAX, TAXRATE, TAXINCLUSIVE, TAXAMT,
-                   EXEMPTED_TAXRATE, EXEMPTED_TAXAMT, AMOUNT
-            FROM {detail_table}
-            WHERE DOCKEY = ?
-            ORDER BY SEQ
-        """, (dockey,))
-        details = []
-        for row in cur.fetchall():
-            details.append(DocDetailRecord(
-                seq=int(row[0] or 0),
-                account=(row[1] or "").strip(),
-                description=(row[2] or "").strip(),
-                tax=(row[3] or "").strip(),
-                tax_rate=(row[4] or "").strip(),
-                tax_inclusive=(row[5] or "F").strip(),
-                tax_amt=float(row[6] or 0),
-                exempted_tax_rate=(row[7] or "").strip(),
-                exempted_tax_amt=float(row[8] or 0),
-                amount=float(row[9] or 0),
-            ))
-        cur.close()
-        return details
+        try:
+            cur.execute(f"""
+                SELECT SEQ, ACCOUNT, DESCRIPTION,
+                       TAX, TAXRATE, TAXINCLUSIVE, TAXAMT,
+                       EXEMPTED_TAXRATE, EXEMPTED_TAXAMT, AMOUNT
+                FROM {detail_table}
+                WHERE DOCKEY = ?
+                ORDER BY SEQ
+            """, (dockey,))
+            details = []
+            for row in cur.fetchall():
+                details.append(DocDetailRecord(
+                    seq=int(row[0] or 0),
+                    account=(row[1] or "").strip(),
+                    description=(row[2] or "").strip(),
+                    tax=(row[3] or "").strip(),
+                    tax_rate=(row[4] or "").strip(),
+                    tax_inclusive=(row[5] or "F").strip(),
+                    tax_amt=float(row[6] or 0),
+                    exempted_tax_rate=(row[7] or "").strip(),
+                    exempted_tax_amt=float(row[8] or 0),
+                    amount=float(row[9] or 0),
+                ))
+            return details
+        finally:
+            cur.close()
 
     def _read_knockoffs(self, dockey: int, from_doc_type: str = "PM") -> list:
         """Read knock-off records for a payment or credit note."""
         cur = self.conn.cursor()
         try:
-            cur.execute(f"""
+            cur.execute("""
                 SELECT
                     A.TODOCTYPE,
-                    (CASE
-                      WHEN (A.TODOCTYPE='IV') THEN (SELECT DOCNO FROM AR_IV WHERE DOCKEY=A.TODOCKEY)
-                      WHEN (A.TODOCTYPE='DN') THEN (SELECT DOCNO FROM AR_DN WHERE DOCKEY=A.TODOCKEY)
-                      WHEN (A.TODOCTYPE='CN') THEN (SELECT DOCNO FROM AR_CN WHERE DOCKEY=A.TODOCKEY)
-                      WHEN (A.TODOCTYPE='PM') THEN (SELECT DOCNO FROM AR_PM WHERE DOCKEY=A.TODOCKEY)
-                    END) AS DOCNO,
+                    COALESCE(IV.DOCNO, DN.DOCNO, CN.DOCNO, PM.DOCNO) AS DOCNO,
                     A.KOAMT, A.LOCALKOAMT, A.ACTUALLOCALKOAMT, A.GAINLOSS
                 FROM AR_KNOCKOFF A
-                WHERE (A.FROMDOCTYPE='{from_doc_type}')
-                AND A.FROMDOCKEY = ?
-            """, (dockey,))
+                LEFT JOIN AR_IV IV ON (A.TODOCTYPE='IV' AND IV.DOCKEY=A.TODOCKEY)
+                LEFT JOIN AR_DN DN ON (A.TODOCTYPE='DN' AND DN.DOCKEY=A.TODOCKEY)
+                LEFT JOIN AR_CN CN ON (A.TODOCTYPE='CN' AND CN.DOCKEY=A.TODOCKEY)
+                LEFT JOIN AR_PM PM ON (A.TODOCTYPE='PM' AND PM.DOCKEY=A.TODOCKEY)
+                WHERE A.FROMDOCTYPE=?
+                AND A.FROMDOCKEY=?
+            """, (from_doc_type, dockey))
             knockoffs = []
             for row in cur.fetchall():
                 doc_no = (row[1] or "").strip()

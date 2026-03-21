@@ -10,6 +10,17 @@ from sdk_session import open_consol_session
 from logger import SyncLogger
 
 
+def _sanitize_sql_str(value: str) -> str:
+    """Escape single quotes for safe SQL string interpolation.
+
+    Used ONLY for SDK NewDataSet which does not support parameterized queries.
+    For fdb cursor queries, always use parameterized ? placeholders instead.
+    """
+    if not value:
+        return ""
+    return value.replace("'", "''")
+
+
 def fetch_company_categories(consol_config: ConsolDBConfig, logger: SyncLogger = None) -> list:
     """Login to consol DB, read all Company Categories, logout.
 
@@ -54,7 +65,7 @@ class ConsolWriter:
             return self._default_accounts[registry_name]
         try:
             ds = self.app.DBManager.NewDataSet(
-                f"SELECT RVALUE FROM SY_REGISTRY WHERE RNAME='{registry_name}'"
+                f"SELECT RVALUE FROM SY_REGISTRY WHERE RNAME='{_sanitize_sql_str(registry_name)}'"
             )
             ds.First()
             val = (ds.FindField("RVALUE").AsString or "").strip() if not ds.Eof else ""
@@ -114,8 +125,8 @@ class ConsolWriter:
         except Exception as e:
             if self.logger:
                 self.logger.warning(f"Could not read TAX table from consol DB: {e}")
-            self._default_accounts["_tax_codes"] = {}
-            return {}
+            self._default_accounts["_tax_codes"] = set()
+            return set()
 
     def _account_for_doc_type(self, doc_type: str) -> str:
         """Get the default GL account for a given AR document type."""
@@ -155,6 +166,7 @@ class ConsolWriter:
 
     def create_currency(self, isocode: str, description: str, symbol: str) -> bool:
         """Create a new currency in consol DB via SDK BizObject."""
+        biz = None
         try:
             biz = self.app.BizObjects.Find("CURRENCY")
             main_ds = biz.DataSets.Find("MainDataSet")
@@ -180,10 +192,11 @@ class ConsolWriter:
                 self.logger.info(f"Created currency: {isocode} ({description})")
             return True
         except Exception as e:
-            try:
-                biz.Close()
-            except Exception:
-                pass
+            if biz:
+                try:
+                    biz.Close()
+                except Exception:
+                    pass
             if self.logger:
                 self.logger.error(f"Failed to create currency '{isocode}'", e)
             return False
@@ -248,6 +261,7 @@ class ConsolWriter:
             journal: "BANK" or "CASH" — determines SpecialAccType
             isocode: Currency ISO code for PMMETHOD CurrencyCode assignment
         """
+        biz = None
         try:
             biz = self.app.BizObjects.Find("GL_ACC")
             main_ds = biz.DataSets.Find("MainDataSet")
@@ -285,16 +299,18 @@ class ConsolWriter:
 
             return True
         except Exception as e:
-            try:
-                biz.Close()
-            except Exception:
-                pass
+            if biz:
+                try:
+                    biz.Close()
+                except Exception:
+                    pass
             if self.logger:
                 self.logger.error(f"Failed to create GL account '{gl_code}'", e)
             return False
 
     def _set_pmmethod_currency(self, pm_code: str, isocode: str):
         """Edit an auto-created PMMETHOD to assign its CurrencyCode."""
+        biz = None
         try:
             biz = self.app.BizObjects.Find("PMMETHOD")
             main_ds = biz.DataSets.Find("MainDataSet")
@@ -316,10 +332,11 @@ class ConsolWriter:
             if self.logger:
                 self.logger.info(f"Set PMMETHOD '{pm_code}' CurrencyCode = '{isocode}'")
         except Exception as e:
-            try:
-                biz.Close()
-            except Exception:
-                pass
+            if biz:
+                try:
+                    biz.Close()
+                except Exception:
+                    pass
             if self.logger:
                 self.logger.warning(f"Failed to set PMMETHOD currency for '{pm_code}': {e}")
 
@@ -333,11 +350,12 @@ class ConsolWriter:
         Returns list of dicts with header fields for comparison.
         """
         table = f"AR_{doc_type}"
-        sql = f"SELECT DOCNO, DOCDATE, CODE, DOCAMT, DESCRIPTION, CURRENCYCODE, CURRENCYRATE FROM {table} WHERE DOCNO LIKE '{prefix}-%'"
+        safe_prefix = _sanitize_sql_str(prefix)
+        sql = f"SELECT DOCNO, DOCDATE, CODE, DOCAMT, DESCRIPTION, CURRENCYCODE, CURRENCYRATE FROM {table} WHERE DOCNO LIKE '{safe_prefix}-%'"
         if date_from:
-            sql += f" AND DOCDATE >= '{date_from}'"
+            sql += f" AND DOCDATE >= '{_sanitize_sql_str(date_from)}'"
         if date_to:
-            sql += f" AND DOCDATE <= '{date_to}'"
+            sql += f" AND DOCDATE <= '{_sanitize_sql_str(date_to)}'"
         sql += " ORDER BY DOCNO"
 
         try:
@@ -367,6 +385,7 @@ class ConsolWriter:
         SQL Account auto un-knock-offs related documents on delete.
         """
         biz_key = f"AR_{doc_type}"
+        biz = None
         try:
             biz = self.app.BizObjects.Find(biz_key)
             doc_key = biz.FindKeyByRef("DOCNO", doc_no)
@@ -385,10 +404,11 @@ class ConsolWriter:
                 self.logger.info(f"Deleted {doc_type} '{doc_no}'")
             return True
         except Exception as e:
-            try:
-                biz.Close()
-            except Exception:
-                pass
+            if biz:
+                try:
+                    biz.Close()
+                except Exception:
+                    pass
             if self.logger:
                 self.logger.error(f"Failed to delete {doc_type} '{doc_no}'", e)
             return False
@@ -398,6 +418,7 @@ class ConsolWriter:
     # ------------------------------------------------------------------
     def upsert_company_category(self, code: str, description: str) -> bool:
         """Create or update a Company Category in the consol DB."""
+        biz = None
         try:
             biz = self.app.BizObjects.Find("COMPANYCATEGORY")
             main_ds = biz.DataSets.Find("MainDataSet")
@@ -425,10 +446,11 @@ class ConsolWriter:
         except Exception as e:
             if self.logger:
                 self.logger.error(f"Failed to upsert Company Category '{code}'", e)
-            try:
-                biz.Close()
-            except Exception:
-                pass
+            if biz:
+                try:
+                    biz.Close()
+                except Exception:
+                    pass
             return False
 
     # ------------------------------------------------------------------
@@ -442,6 +464,7 @@ class ConsolWriter:
                   email, address1-4, postcode, company_category
         """
         code = data["code"]
+        biz = None
         try:
             biz = self.app.BizObjects.Find("AR_CUSTOMER")
             main_ds = biz.DataSets.Find("MainDataSet")
@@ -489,10 +512,11 @@ class ConsolWriter:
         except Exception as e:
             if self.logger:
                 self.logger.error(f"Failed to upsert Customer '{code}'", e)
-            try:
-                biz.Close()
-            except Exception:
-                pass
+            if biz:
+                try:
+                    biz.Close()
+                except Exception:
+                    pass
             return False
 
     # ------------------------------------------------------------------
@@ -513,6 +537,7 @@ class ConsolWriter:
                 self.logger.error(f"Unknown document type: {doc_type}")
             return False
 
+        biz = None
         try:
             biz = self.app.BizObjects.Find(biz_key)
             main_ds = biz.DataSets.Find("MainDataSet")
@@ -571,21 +596,7 @@ class ConsolWriter:
             # Knock-off for CN (CN knocks off IV/DN)
             if doc_type == "CN" and data.get("knockoffs"):
                 ko_ds = biz.DataSets.Find("cdsKnockOff")
-                for ko in data["knockoffs"]:
-                    v = [ko["doc_type"], ko["doc_no"]]
-                    if ko_ds.Locate("DocType;DocNo", v, False, False):
-                        ko_ds.Edit()
-                        ko_ds.FindField("KOAmt").AsFloat = ko["ko_amt"]
-                        ko_ds.FindField("LocalKOAmt").AsFloat = ko.get("local_ko_amt", 0)
-                        ko_ds.FindField("ActualLocalKOAmt").AsFloat = ko.get("actual_local_ko_amt", 0)
-                        ko_ds.FindField("GainLoss").AsFloat = ko.get("gain_loss", 0)
-                        ko_ds.FindField("KnockOff").value = True
-                        ko_ds.Post()
-                    else:
-                        if self.logger:
-                            self.logger.warning(
-                                f"CN knock-off target not found: {ko['doc_type']} '{ko['doc_no']}'"
-                            )
+                self._apply_knockoffs(ko_ds, data["knockoffs"], f"CN '{doc_no}'")
 
             biz.Save()
             biz.Close()
@@ -596,10 +607,11 @@ class ConsolWriter:
         except Exception as e:
             if self.logger:
                 self.logger.error(f"Failed to insert {doc_type} '{doc_no}'", e)
-            try:
-                biz.Close()
-            except Exception:
-                pass
+            if biz:
+                try:
+                    biz.Close()
+                except Exception:
+                    pass
             return False
 
     # ------------------------------------------------------------------
@@ -609,6 +621,7 @@ class ConsolWriter:
         """Insert an AR Contra with knock-off into the consol DB."""
         doc_no = data["doc_no"]
 
+        biz = None
         try:
             biz = self.app.BizObjects.Find("AR_CT")
             main_ds = biz.DataSets.Find("MainDataSet")
@@ -639,21 +652,7 @@ class ConsolWriter:
                 main_ds.FindField("CURRENCYRATE").AsFloat = data.get("currency_rate", 1.0)
 
             # Knock-off invoices (CT knocks off IV/DN)
-            for ko in data.get("knockoffs", []):
-                v = [ko["doc_type"], ko["doc_no"]]
-                if ko_ds.Locate("DocType;DocNo", v, False, False):
-                    ko_ds.Edit()
-                    ko_ds.FindField("KOAmt").AsFloat = ko["ko_amt"]
-                    ko_ds.FindField("LocalKOAmt").AsFloat = ko.get("local_ko_amt", 0)
-                    ko_ds.FindField("ActualLocalKOAmt").AsFloat = ko.get("actual_local_ko_amt", 0)
-                    ko_ds.FindField("GainLoss").AsFloat = ko.get("gain_loss", 0)
-                    ko_ds.FindField("KnockOff").value = True
-                    ko_ds.Post()
-                else:
-                    if self.logger:
-                        self.logger.warning(
-                            f"CT knock-off target not found: {ko['doc_type']} '{ko['doc_no']}'"
-                        )
+            self._apply_knockoffs(ko_ds, data.get("knockoffs", []), f"CT '{doc_no}'")
 
             biz.Save()
             biz.Close()
@@ -664,10 +663,11 @@ class ConsolWriter:
         except Exception as e:
             if self.logger:
                 self.logger.error(f"Failed to insert CT '{doc_no}'", e)
-            try:
-                biz.Close()
-            except Exception:
-                pass
+            if biz:
+                try:
+                    biz.Close()
+                except Exception:
+                    pass
             return False
 
     # ------------------------------------------------------------------
@@ -677,6 +677,7 @@ class ConsolWriter:
         """Insert an AR Payment with knock-off into the consol DB."""
         doc_no = data["doc_no"]
 
+        biz = None
         try:
             biz = self.app.BizObjects.Find("AR_PM")
             main_ds = biz.DataSets.Find("MainDataSet")
@@ -712,22 +713,7 @@ class ConsolWriter:
                 main_ds.FindField("CURRENCYRATE").AsFloat = data.get("currency_rate", 1.0)
 
             # Knock-off invoices
-            for ko in data.get("knockoffs", []):
-                # Locate the matching outstanding document
-                v = [ko["doc_type"], ko["doc_no"]]
-                if ko_ds.Locate("DocType;DocNo", v, False, False):
-                    ko_ds.Edit()
-                    ko_ds.FindField("KOAmt").AsFloat = ko["ko_amt"]
-                    ko_ds.FindField("LocalKOAmt").AsFloat = ko.get("local_ko_amt", 0)
-                    ko_ds.FindField("ActualLocalKOAmt").AsFloat = ko.get("actual_local_ko_amt", 0)
-                    ko_ds.FindField("GainLoss").AsFloat = ko.get("gain_loss", 0)
-                    ko_ds.FindField("KnockOff").value = True
-                    ko_ds.Post()
-                else:
-                    if self.logger:
-                        self.logger.warning(
-                            f"Knock-off target not found: {ko['doc_type']} '{ko['doc_no']}'"
-                        )
+            self._apply_knockoffs(ko_ds, data.get("knockoffs", []), f"PM '{doc_no}'")
 
             biz.Save()
             biz.Close()
@@ -738,10 +724,11 @@ class ConsolWriter:
         except Exception as e:
             if self.logger:
                 self.logger.error(f"Failed to insert PM '{doc_no}'", e)
-            try:
-                biz.Close()
-            except Exception:
-                pass
+            if biz:
+                try:
+                    biz.Close()
+                except Exception:
+                    pass
             return False
 
     # ------------------------------------------------------------------
@@ -754,6 +741,7 @@ class ConsolWriter:
         """
         doc_no = data["doc_no"]
 
+        biz = None
         try:
             biz = self.app.BizObjects.Find("AR_CF")
             main_ds = biz.DataSets.Find("MainDataSet")
@@ -789,21 +777,7 @@ class ConsolWriter:
                 main_ds.FindField("CURRENCYRATE").AsFloat = data.get("currency_rate", 1.0)
 
             # Knock-off (CF knocks off CN or PM)
-            for ko in data.get("knockoffs", []):
-                v = [ko["doc_type"], ko["doc_no"]]
-                if ko_ds.Locate("DocType;DocNo", v, False, False):
-                    ko_ds.Edit()
-                    ko_ds.FindField("KOAmt").AsFloat = ko["ko_amt"]
-                    ko_ds.FindField("LocalKOAmt").AsFloat = ko.get("local_ko_amt", 0)
-                    ko_ds.FindField("ActualLocalKOAmt").AsFloat = ko.get("actual_local_ko_amt", 0)
-                    ko_ds.FindField("GainLoss").AsFloat = ko.get("gain_loss", 0)
-                    ko_ds.FindField("KnockOff").value = True
-                    ko_ds.Post()
-                else:
-                    if self.logger:
-                        self.logger.warning(
-                            f"CF knock-off target not found: {ko['doc_type']} '{ko['doc_no']}'"
-                        )
+            self._apply_knockoffs(ko_ds, data.get("knockoffs", []), f"CF '{doc_no}'")
 
             biz.Save()
             biz.Close()
@@ -814,15 +788,40 @@ class ConsolWriter:
         except Exception as e:
             if self.logger:
                 self.logger.error(f"Failed to insert CF '{doc_no}'", e)
-            try:
-                biz.Close()
-            except Exception:
-                pass
+            if biz:
+                try:
+                    biz.Close()
+                except Exception:
+                    pass
             return False
 
     # ------------------------------------------------------------------
     # Helpers
     # ------------------------------------------------------------------
+    def _apply_knockoffs(self, ko_ds, knockoffs: list, context: str):
+        """Apply knock-off records to a BizObject's cdsKnockOff dataset.
+
+        Args:
+            ko_ds: The cdsKnockOff dataset from the BizObject.
+            knockoffs: List of knock-off dicts with doc_type, doc_no, ko_amt, etc.
+            context: Document identifier for log messages (e.g. "CN 'A1-CN-001'").
+        """
+        for ko in knockoffs:
+            v = [ko["doc_type"], ko["doc_no"]]
+            if ko_ds.Locate("DocType;DocNo", v, False, False):
+                ko_ds.Edit()
+                ko_ds.FindField("KOAmt").AsFloat = ko["ko_amt"]
+                ko_ds.FindField("LocalKOAmt").AsFloat = ko.get("local_ko_amt", 0)
+                ko_ds.FindField("ActualLocalKOAmt").AsFloat = ko.get("actual_local_ko_amt", 0)
+                ko_ds.FindField("GainLoss").AsFloat = ko.get("gain_loss", 0)
+                ko_ds.FindField("KnockOff").value = True
+                ko_ds.Post()
+            else:
+                if self.logger:
+                    self.logger.warning(
+                        f"{context} knock-off target not found: {ko['doc_type']} '{ko['doc_no']}'"
+                    )
+
     def check_doc_exists(self, biz_key: str, doc_no: str) -> bool:
         """Check if a document already exists in the consol DB."""
         try:

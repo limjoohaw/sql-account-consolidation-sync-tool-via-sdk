@@ -128,6 +128,13 @@ class SyncEngine:
         """Request cancellation of the current operation."""
         self._cancelled = True
 
+    @staticmethod
+    def _build_currency_map(source_currencies: list) -> dict:
+        """Build currency CODE -> ISOCODE map, excluding home currency."""
+        return {cur["code"]: cur["isocode"]
+                for cur in source_currencies
+                if cur["code"] != "----" and cur["isocode"]}
+
     # ------------------------------------------------------------------
     # Preview (Dry Run)
     # ------------------------------------------------------------------
@@ -248,11 +255,7 @@ class SyncEngine:
                 source_currencies = reader.read_currencies()
 
                 # Build currency CODE → ISOCODE map for transformer
-                currency_map = {}
-                for cur in source_currencies:
-                    if cur["code"] != "----" and cur["isocode"]:
-                        currency_map[cur["code"]] = cur["isocode"]
-                transformer.currency_map = currency_map
+                transformer.currency_map = self._build_currency_map(source_currencies)
 
                 # Read payment methods for GL account auto-creation and pm_lookup
                 source_payment_methods = reader.read_payment_methods()
@@ -384,11 +387,7 @@ class SyncEngine:
 
                     # Build currency map for transformer
                     source_currencies = reader.read_currencies()
-                    currency_map = {}
-                    for cur in source_currencies:
-                        if cur["code"] != "----" and cur["isocode"]:
-                            currency_map[cur["code"]] = cur["isocode"]
-                    transformer.currency_map = currency_map
+                    transformer.currency_map = self._build_currency_map(source_currencies)
 
                     # Read consol documents via direct Firebird (no SDK needed)
                     consol_db = self.config.consol_db
@@ -426,15 +425,18 @@ class SyncEngine:
 
                             # Read consol documents via Firebird
                             table = f"AR_{mod}"
-                            sql = f"SELECT DOCNO, DOCDATE, CODE, DOCAMT, DESCRIPTION, CURRENCYCODE, CURRENCYRATE FROM {table} WHERE DOCNO LIKE '{prefix}-%'"
+                            sql = f"SELECT DOCNO, DOCDATE, CODE, DOCAMT, DESCRIPTION, CURRENCYCODE, CURRENCYRATE FROM {table} WHERE DOCNO LIKE ?"
+                            params = [f"{prefix}-%"]
                             if date_from:
-                                sql += f" AND DOCDATE >= '{date_from}'"
+                                sql += " AND DOCDATE >= ?"
+                                params.append(date_from)
                             if date_to:
-                                sql += f" AND DOCDATE <= '{date_to}'"
+                                sql += " AND DOCDATE <= ?"
+                                params.append(date_to)
                             sql += " ORDER BY DOCNO"
 
                             try:
-                                consol_cur.execute(sql)
+                                consol_cur.execute(sql, params)
                                 consol_docs = []
                                 for row in consol_cur.fetchall():
                                     consol_docs.append({
