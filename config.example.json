@@ -1,0 +1,27 @@
+{
+    "consol_db": {
+        "dcf_path": "C:/eStream/SQLAccounting/Share/Default.DCF",
+        "db_name": "CONSOLSOA.FDB",
+        "username": "ADMIN",
+        "password": "ADMIN",
+        "fb_host": "localhost",
+        "fb_path": "C:/eStream/SQLAccounting/DB/CONSOLSOA.FDB",
+        "fb_user": "SYSDBA",
+        "fb_password": "masterkey"
+    },
+    "entities": [
+        {
+            "customer_code_prefix": "300-",
+            "fb_host": "localhost",
+            "fb_path": "C:/eStream/SQLAccounting/DB/YOUR_SOURCE.FDB",
+            "fb_user": "SYSDBA",
+            "fb_password": "masterkey",
+            "name": "",
+            "remark": "",
+            "prefix": "",
+            "customer_category_map": {},
+            "last_synced": null,
+            "enabled": true
+        }
+    ]
+}

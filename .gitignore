@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Claude Code (AI assistant config)
+CLAUDE.md
+.claude/
+
+# Logs (runtime generated)
+logs/
+
+# Config with credentials
+config.json
+
+# PyInstaller build output
+build/
+dist/
+*.spec
+
+# Windows
+Thumbs.db
+Desktop.ini

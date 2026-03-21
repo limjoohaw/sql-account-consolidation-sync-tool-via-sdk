@@ -1,0 +1,89 @@
+"""Configuration manager for entity DB connections and app settings."""
+
+import os
+import json
+from dataclasses import dataclass, field, asdict
+from typing import Optional
+
+CONFIG_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.json")
+
+
+@dataclass
+class ConsolDBConfig:
+    dcf_path: str = ""
+    db_name: str = ""
+    username: str = "ADMIN"
+    password: str = "ADMIN"
+    # Firebird direct connection (for fast reads without SDK)
+    fb_host: str = "localhost"
+    fb_path: str = ""             # Full .FDB file path for fdb driver
+    fb_user: str = "SYSDBA"
+    fb_password: str = "masterkey"
+
+
+@dataclass
+class EntityConfig:
+    # User-defined
+    customer_code_prefix: str = "300-"
+    # Firebird direct connection (for source reading)
+    fb_host: str = "localhost"
+    fb_path: str = ""                 # Full .FDB file path for fdb driver
+    fb_user: str = "SYSDBA"
+    fb_password: str = "masterkey"
+    # Auto-read from SY_PROFILE at sync time
+    name: str = ""                    # SY_PROFILE.COMPANYNAME (auto-read)
+    remark: str = ""                  # SY_PROFILE.REMARK (auto-read, for identification)
+    prefix: str = ""                  # SY_PROFILE.ALIAS (Entity Prefix)
+    # Per-customer company category mapping (original customer code → category code)
+    customer_category_map: dict = field(default_factory=dict)
+    # Sync tracking
+    last_synced: Optional[str] = None
+    enabled: bool = True
+
+
+@dataclass
+class AppConfig:
+    consol_db: ConsolDBConfig = field(default_factory=ConsolDBConfig)
+    entities: list = field(default_factory=list)
+
+    def add_entity(self, entity: EntityConfig):
+        self.entities.append(entity)
+
+    def remove_entity(self, index: int):
+        if 0 <= index < len(self.entities):
+            self.entities.pop(index)
+
+    def get_enabled_entities(self) -> list:
+        return [e for e in self.entities if e.enabled]
+
+
+def load_config() -> AppConfig:
+    """Load configuration from JSON file."""
+    if not os.path.exists(CONFIG_FILE):
+        return AppConfig()
+
+    with open(CONFIG_FILE, "r") as f:
+        data = json.load(f)
+
+    config = AppConfig()
+    # Load consol DB config
+    if "consol_db" in data:
+        config.consol_db = ConsolDBConfig(**data["consol_db"])
+
+    # Load entities
+    valid_fields = {f for f in EntityConfig.__dataclass_fields__}
+    for ent_data in data.get("entities", []):
+        filtered = {k: v for k, v in ent_data.items() if k in valid_fields}
+        config.entities.append(EntityConfig(**filtered))
+
+    return config
+
+
+def save_config(config: AppConfig):
+    """Save configuration to JSON file."""
+    data = {
+        "consol_db": asdict(config.consol_db),
+        "entities": [asdict(e) for e in config.entities],
+    }
+    with open(CONFIG_FILE, "w") as f:
+        json.dump(data, f, indent=4)
