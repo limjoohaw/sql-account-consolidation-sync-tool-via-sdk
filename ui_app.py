@@ -434,28 +434,16 @@ class App(ctk.CTk):
     def _build_entity_tab(self):
         tab = self.tabview.tab("Entity Manager")
 
-        # Search bar (grid layout for alignment)
-        search_frame = ctk.CTkFrame(tab, fg_color="transparent")
-        search_frame.pack(fill="x", padx=20, pady=(10, 5))
-
-        ctk.CTkLabel(search_frame, text="Search:", font=FONT_SECTION
-                      ).grid(row=0, column=0, sticky="w", padx=(0, 5), pady=3)
-        self.entity_search_var = ctk.StringVar()
-        self.entity_search_var.trace_add("write", lambda *_: self._ent_schedule_render())
-        ctk.CTkEntry(search_frame, textvariable=self.entity_search_var,
-                      width=350, placeholder_text="Filter by prefix or company name..."
-                      ).grid(row=0, column=1, sticky="w", padx=5, pady=3)
-
         # Entity count label
         self.entity_count_label = ctk.CTkLabel(tab, text="", anchor="w", text_color="gray40")
         self.entity_count_label.pack(fill="x", padx=25, pady=(2, 2))
 
         # Table header
-        header_frame = ctk.CTkFrame(tab, fg_color=CLR_BG_SEC)
+        header_frame = ctk.CTkFrame(tab, fg_color=CLR_BG_SEC, corner_radius=0)
         header_frame.pack(fill="x", padx=20, pady=(0, 0))
         header_frame.columnconfigure(0, weight=0, minsize=30)
         header_frame.columnconfigure(1, weight=0, minsize=30)
-        header_frame.columnconfigure(2, weight=0, minsize=60)
+        header_frame.columnconfigure(2, weight=0, minsize=80)
         header_frame.columnconfigure(3, weight=1)
         header_frame.columnconfigure(4, weight=0, minsize=60)
         header_frame.columnconfigure(5, weight=0, minsize=130)
@@ -471,32 +459,100 @@ class App(ctk.CTk):
             (1, ("#", 30)), (2, ("Prefix", 60)), (3, ("Company Name", 0)),
             (4, ("Strip", 60)), (5, ("Last Synced", 130)), (6, ("", 50)),
         ]:
-            lbl = ctk.CTkLabel(header_frame, text=text, font=FONT_SECTION,
-                                anchor="w" if col == 3 else "center")
+            lbl = ctk.CTkLabel(header_frame, text=text, font=FONT_SECTION, anchor="center")
             if width > 0:
                 lbl.configure(width=width)
-            lbl.grid(row=0, column=col, padx=4, pady=4, sticky="ew" if col == 3 else "")
+            lbl.grid(row=0, column=col, padx=4, pady=4, sticky="ew")
 
-        # Scrollable entity list
-        self.entity_scroll = ctk.CTkScrollableFrame(tab, height=300, fg_color="white")
-        self.entity_scroll.pack(fill="both", expand=True, padx=20, pady=(0, 0))
-        self.entity_scroll.columnconfigure(0, weight=0, minsize=30)
-        self.entity_scroll.columnconfigure(1, weight=0, minsize=30)
-        self.entity_scroll.columnconfigure(2, weight=0, minsize=60)
-        self.entity_scroll.columnconfigure(3, weight=1)
-        self.entity_scroll.columnconfigure(4, weight=0, minsize=60)
-        self.entity_scroll.columnconfigure(5, weight=0, minsize=130)
-        self.entity_scroll.columnconfigure(6, weight=0, minsize=50)
+        # Filter row
+        ent_filter_row = ctk.CTkFrame(tab, fg_color="white", border_width=1,
+                                       border_color="gray80", corner_radius=0)
+        ent_filter_row.pack(fill="x", padx=20, pady=(0, 0))
+        ent_filter_row.columnconfigure(0, weight=0, minsize=30)
+        ent_filter_row.columnconfigure(1, weight=0, minsize=30)
+        ent_filter_row.columnconfigure(2, weight=0, minsize=80)
+        ent_filter_row.columnconfigure(3, weight=1)
+        ent_filter_row.columnconfigure(4, weight=0, minsize=60)
+        ent_filter_row.columnconfigure(5, weight=0, minsize=130)
+        ent_filter_row.columnconfigure(6, weight=0, minsize=50)
 
-        # Action buttons (centered footer)
+        self._ent_filter_checked_var = ctk.StringVar(value="All")
+        self._ent_filter_row_var = ctk.StringVar()
+        self._ent_filter_prefix_var = ctk.StringVar()
+        self._ent_filter_name_var = ctk.StringVar()
+        for var in [self._ent_filter_row_var, self._ent_filter_prefix_var,
+                    self._ent_filter_name_var]:
+            var.trace_add("write", lambda *_: self._ent_schedule_render())
+
+        # Column 0: Checked filter (dropdown)
+        ctk.CTkComboBox(
+            ent_filter_row, values=["All", "True", "False"],
+            variable=self._ent_filter_checked_var, width=30, height=26,
+            font=FONT_CODE_SM, state="readonly",
+            command=lambda _: self._ent_schedule_render()
+        ).grid(row=0, column=0, padx=4, pady=3, sticky="ew")
+
+        # Column 1: Row # filter
+        ctk.CTkEntry(ent_filter_row, textvariable=self._ent_filter_row_var,
+                      width=30, height=26, font=FONT_CODE_SM,
+                      placeholder_text="#"
+                      ).grid(row=0, column=1, padx=4, pady=3, sticky="ew")
+
+        # Column 2: Prefix filter
+        ctk.CTkEntry(ent_filter_row, textvariable=self._ent_filter_prefix_var,
+                      width=36, height=26, font=FONT_CODE_SM,
+                      placeholder_text="Prefix..."
+                      ).grid(row=0, column=2, padx=4, pady=3, sticky="ew")
+
+        # Column 3: Name filter
+        ctk.CTkEntry(ent_filter_row, textvariable=self._ent_filter_name_var,
+                      height=26, font=FONT_CODE_SM,
+                      placeholder_text="Name..."
+                      ).grid(row=0, column=3, padx=(4, 80), pady=3, sticky="ew")
+
+        # Column 4: Strip filter
+
+        # --- Bottom section (pack with side="bottom" first to reserve space) ---
+
+        # Action buttons
         btn_frame = ctk.CTkFrame(tab, fg_color="transparent")
-        btn_frame.pack(pady=10)
+        btn_frame.pack(side="bottom", pady=10)
         ctk.CTkButton(btn_frame, text="+ Add Entity", fg_color=CLR_PRIMARY,
                        hover_color=CLR_SECONDARY,
                        command=self._add_entity_dialog).pack(side="left", padx=10)
         ctk.CTkButton(btn_frame, text="Remove Selected", fg_color=CLR_DANGER,
                        hover_color=CLR_DANGER_HOVER,
                        command=self._remove_entity).pack(side="left", padx=10)
+
+        # Grid footer
+        ent_footer = ctk.CTkFrame(tab, fg_color=CLR_BG_SEC, corner_radius=0)
+        ent_footer.pack(side="bottom", fill="x", padx=20, pady=(0, 0))
+        ent_footer.columnconfigure(0, weight=0, minsize=30)
+        ent_footer.columnconfigure(1, weight=0, minsize=30)
+        ent_footer.columnconfigure(2, weight=0, minsize=80)
+        ent_footer.columnconfigure(3, weight=1)
+        ent_footer.columnconfigure(4, weight=0, minsize=60)
+        ent_footer.columnconfigure(5, weight=0, minsize=130)
+        ent_footer.columnconfigure(6, weight=0, minsize=50)
+
+        self._ent_footer_checked_label = ctk.CTkLabel(
+            ent_footer, text="", font=FONT_CODE_SM, text_color="gray40")
+        self._ent_footer_checked_label.grid(row=0, column=0, padx=4, pady=4, sticky="w")
+
+        self._ent_footer_count_label = ctk.CTkLabel(
+            ent_footer, text="", font=FONT_CODE_SM, text_color="gray40")
+        self._ent_footer_count_label.grid(row=0, column=1, padx=4, pady=4)
+
+        # Scrollable entity list
+        self.entity_scroll = ctk.CTkScrollableFrame(tab, height=300, fg_color="white", corner_radius=0)
+        self.entity_scroll.pack(fill="both", expand=True, padx=20, pady=(0, 0))
+        self.entity_scroll.columnconfigure(0, weight=0, minsize=30)
+        self.entity_scroll.columnconfigure(1, weight=0, minsize=30)
+        self.entity_scroll.columnconfigure(2, weight=0, minsize=80)
+        self.entity_scroll.columnconfigure(3, weight=1)
+        self.entity_scroll.columnconfigure(4, weight=0, minsize=60)
+        self.entity_scroll.columnconfigure(5, weight=0, minsize=130)
+        self.entity_scroll.columnconfigure(6, weight=0, minsize=50)
 
         self.entity_widgets = []
         self._refresh_entity_list()
@@ -516,22 +572,40 @@ class App(ctk.CTk):
             widget.destroy()
         self.entity_widgets = []
 
-        search_text = self.entity_search_var.get().lower() if hasattr(self, "entity_search_var") else ""
+        # Per-column filters
+        f_checked = self._ent_filter_checked_var.get() if hasattr(self, "_ent_filter_checked_var") else "All"
+        f_row = self._ent_filter_row_var.get().strip() if hasattr(self, "_ent_filter_row_var") else ""
+        f_prefix = self._ent_filter_prefix_var.get().lower().strip() if hasattr(self, "_ent_filter_prefix_var") else ""
+        f_name = self._ent_filter_name_var.get().lower().strip() if hasattr(self, "_ent_filter_name_var") else ""
+        has_filter = bool(f_prefix or f_name or f_row or f_checked != "All")
 
         if not self.config.entities:
             ctk.CTkLabel(self.entity_scroll, text="No entities configured. Click '+ Add Entity' to begin.",
                           text_color="gray40").grid(row=0, column=0, columnspan=7, pady=20)
             if hasattr(self, "entity_count_label"):
                 self.entity_count_label.configure(text="0 entities")
+            if hasattr(self, "_ent_footer_checked_label"):
+                self._ent_footer_checked_label.configure(text="")
+                self._ent_footer_count_label.configure(text="")
             return
 
         visible_count = 0
+        checked_count = 0
         for i, entity in enumerate(self.config.entities):
-            # Filter by search
-            if search_text:
-                searchable = f"{entity.name} {entity.remark} {entity.prefix} {entity.customer_code_prefix}".lower()
-                if search_text not in searchable:
-                    continue
+            # Per-column filters
+            if f_checked == "True" and not entity.enabled:
+                continue
+            if f_checked == "False" and entity.enabled:
+                continue
+            if f_row and f_row not in str(i + 1):
+                continue
+            if f_prefix and f_prefix not in (entity.prefix or "").lower():
+                continue
+            if f_name and f_name not in f"{entity.name} {entity.remark}".lower():
+                continue
+
+            if entity.enabled:
+                checked_count += 1
 
             row = visible_count
             visible_count += 1
@@ -576,12 +650,18 @@ class App(ctk.CTk):
 
             self.entity_widgets.append({"var": var, "index": i})
 
+        total = len(self.config.entities)
         if hasattr(self, "entity_count_label"):
-            total = len(self.config.entities)
-            if search_text:
+            if has_filter:
                 self.entity_count_label.configure(text=f"{visible_count} of {total} entities shown")
             else:
                 self.entity_count_label.configure(text=f"{total} entities")
+        if hasattr(self, "_ent_footer_checked_label"):
+            self._ent_footer_checked_label.configure(text=f"{checked_count} enabled")
+            if has_filter:
+                self._ent_footer_count_label.configure(text=f"{visible_count} of {total}")
+            else:
+                self._ent_footer_count_label.configure(text=f"{total}")
 
     def _toggle_entity(self, index, var):
         self.config.entities[index].enabled = var.get()
@@ -837,42 +917,114 @@ class App(ctk.CTk):
                        command=self._cat_refresh_categories
                        ).grid(row=1, column=2, sticky="ew", padx=5, pady=3)
 
-        # Row 2: Search
-        ctk.CTkLabel(ctrl_frame, text="Search:", font=FONT_SECTION
-                      ).grid(row=2, column=0, sticky="w", padx=(0, 5), pady=3)
-        self._cat_search_var = ctk.StringVar()
-        self._cat_search_var.trace_add("write", lambda *_: self._cat_schedule_render())
-        ctk.CTkEntry(ctrl_frame, textvariable=self._cat_search_var,
-                      width=350, placeholder_text="Filter by code or company name..."
-                      ).grid(row=2, column=1, sticky="w", padx=5, pady=3)
-
         # Status label
         self._cat_status_label = ctk.CTkLabel(tab,
                                                text="Select an entity and click Load Customers.",
                                                anchor="w", text_color="gray40")
         self._cat_status_label.pack(fill="x", padx=25, pady=(2, 2))
 
-        # Filter toggle buttons
-        filter_frame = ctk.CTkFrame(tab, fg_color="transparent")
-        filter_frame.pack(fill="x", padx=20, pady=(2, 0))
+        # Table header with check-all checkbox
+        cat_header = ctk.CTkFrame(tab, fg_color=CLR_BG_SEC, corner_radius=0)
+        cat_header.pack(fill="x", padx=20, pady=(0, 0))
+        cat_header.columnconfigure(0, weight=0, minsize=30)
+        cat_header.columnconfigure(1, weight=0, minsize=30)
+        cat_header.columnconfigure(2, weight=0, minsize=120)
+        cat_header.columnconfigure(3, weight=1)
+        cat_header.columnconfigure(4, weight=0, minsize=80)
+        cat_header.columnconfigure(5, weight=0, minsize=250)
 
-        ctk.CTkLabel(filter_frame, text="Filter:", font=FONT_SECTION
-                      ).pack(side="left", padx=(5, 8))
-        self._cat_filter = "All"
-        self._cat_filter_buttons = {}
-        for fval in ["All", "Mapped", "Unmapped", "Checked"]:
-            btn = ctk.CTkButton(
-                filter_frame, text=fval, width=80, height=26,
-                fg_color=CLR_PRIMARY if fval == "All" else CLR_BG_SEC,
-                text_color="white" if fval == "All" else "gray10",
-                hover_color=CLR_SECONDARY,
-                command=lambda v=fval: self._cat_set_filter(v))
-            btn.pack(side="left", padx=2)
-            self._cat_filter_buttons[fval] = btn
+        self._cat_check_all_var = ctk.BooleanVar(value=False)
+        ctk.CTkCheckBox(cat_header, text="", variable=self._cat_check_all_var,
+                         width=30, fg_color=CLR_PRIMARY,
+                         command=self._cat_toggle_check_all
+                         ).grid(row=0, column=0, padx=4, pady=4, sticky="w")
+
+        for col, (text, width) in [
+            (1, ("#", 30)), (2, ("Customer Code", 120)),
+            (3, ("Company Name", 0)), (4, ("Currency", 80)), (5, ("Category", 250)),
+        ]:
+            lbl = ctk.CTkLabel(cat_header, text=text, font=FONT_SECTION, anchor="center")
+            if width > 0:
+                lbl.configure(width=width)
+            lbl.grid(row=0, column=col, padx=4, pady=4, sticky="ew")
+
+        # Filter row (per-column filter inputs)
+        cat_filter_row = ctk.CTkFrame(tab, fg_color="white", border_width=1,
+                                       border_color="gray80", corner_radius=0)
+        cat_filter_row.pack(fill="x", padx=20, pady=(0, 0))
+        cat_filter_row.columnconfigure(0, weight=0, minsize=30)
+        cat_filter_row.columnconfigure(1, weight=0, minsize=30)
+        cat_filter_row.columnconfigure(2, weight=0, minsize=120)
+        cat_filter_row.columnconfigure(3, weight=1)
+        cat_filter_row.columnconfigure(4, weight=0, minsize=80)
+        cat_filter_row.columnconfigure(5, weight=0, minsize=250)
+
+        self._cat_filter_checked_var = ctk.StringVar(value="All")
+        self._cat_filter_row_var = ctk.StringVar()
+        self._cat_filter_code_var = ctk.StringVar()
+        self._cat_filter_name_var = ctk.StringVar()
+        self._cat_filter_currency_var = ctk.StringVar()
+        self._cat_filter_category_var = ctk.StringVar(value="All")
+
+        for var in [self._cat_filter_row_var, self._cat_filter_code_var,
+                    self._cat_filter_name_var, self._cat_filter_currency_var]:
+            var.trace_add("write", lambda *_: self._cat_schedule_render())
+
+        # Column 0: Checked filter (dropdown)
+        checked_combo = ctk.CTkComboBox(
+            cat_filter_row, values=["All", "True", "False"],
+            variable=self._cat_filter_checked_var, width=30, height=26,
+            font=FONT_CODE_SM, state="readonly",
+            command=lambda _: self._cat_schedule_render())
+        checked_combo.grid(row=0, column=0, padx=4, pady=3, sticky="ew")
+
+        # Column 1: Row # filter
+        ctk.CTkEntry(cat_filter_row, textvariable=self._cat_filter_row_var,
+                      width=30, height=26, font=FONT_CODE_SM,
+                      placeholder_text="#"
+                      ).grid(row=0, column=1, padx=4, pady=3, sticky="ew")
+
+        # Column 2: Code filter
+        ctk.CTkEntry(cat_filter_row, textvariable=self._cat_filter_code_var,
+                      width=120, height=26, font=FONT_CODE_SM,
+                      placeholder_text="Code..."
+                      ).grid(row=0, column=2, padx=4, pady=3, sticky="ew")
+
+        # Column 3: Name filter
+        ctk.CTkEntry(cat_filter_row, textvariable=self._cat_filter_name_var,
+                      height=26, font=FONT_CODE_SM,
+                      placeholder_text="Name..."
+                      ).grid(row=0, column=3, padx=4, pady=3, sticky="ew")
+
+        # Column 4: Currency filter
+        ctk.CTkEntry(cat_filter_row, textvariable=self._cat_filter_currency_var,
+                      width=80, height=26, font=FONT_CODE_SM,
+                      placeholder_text="Currency..."
+                      ).grid(row=0, column=4, padx=4, pady=3, sticky="ew")
+
+        # Column 5: Category filter (dropdown)
+        self._cat_filter_category_combo = ctk.CTkComboBox(
+            cat_filter_row, values=["All", "(none)"],
+            variable=self._cat_filter_category_var, width=250, height=26,
+            font=FONT_CODE_SM, state="readonly",
+            command=lambda _: self._cat_schedule_render())
+        self._cat_filter_category_combo.grid(row=0, column=5, padx=4, pady=3, sticky="ew")
+
+        # --- Bottom section (pack with side="bottom" first to reserve space) ---
+
+        # Action buttons (centered footer)
+        btn_frame = ctk.CTkFrame(tab, fg_color="transparent")
+        btn_frame.pack(side="bottom", pady=10)
+        ctk.CTkButton(btn_frame, text="Apply", width=70, fg_color=CLR_ACCENT,
+                       hover_color=CLR_SECONDARY,
+                       command=self._cat_bulk_apply).pack(side="left", padx=10)
+        ctk.CTkButton(btn_frame, text="Save Mapping", fg_color=CLR_PRIMARY,
+                       hover_color=CLR_SECONDARY,
+                       command=self._cat_save_mapping).pack(side="left", padx=10)
 
         # Pagination bar
         page_frame = ctk.CTkFrame(tab, fg_color="transparent")
-        page_frame.pack(fill="x", padx=20, pady=(2, 0))
+        page_frame.pack(side="bottom", fill="x", padx=20, pady=(4, 0))
 
         self._cat_prev_btn = ctk.CTkButton(
             page_frame, text="< Prev", width=60, height=26,
@@ -899,34 +1051,26 @@ class App(ctk.CTk):
             state="readonly", command=self._cat_page_size_changed)
         page_size_combo.pack(side="left", padx=2)
 
-        # Table header with check-all checkbox
-        cat_header = ctk.CTkFrame(tab, fg_color=CLR_BG_SEC)
-        cat_header.pack(fill="x", padx=20, pady=(0, 0))
-        cat_header.columnconfigure(0, weight=0, minsize=30)
-        cat_header.columnconfigure(1, weight=0, minsize=30)
-        cat_header.columnconfigure(2, weight=0, minsize=120)
-        cat_header.columnconfigure(3, weight=1)
-        cat_header.columnconfigure(4, weight=0, minsize=80)
-        cat_header.columnconfigure(5, weight=0, minsize=250)
+        # Grid footer (summary counts)
+        cat_footer = ctk.CTkFrame(tab, fg_color=CLR_BG_SEC, corner_radius=0)
+        cat_footer.pack(side="bottom", fill="x", padx=20, pady=(0, 0))
+        cat_footer.columnconfigure(0, weight=0, minsize=30)
+        cat_footer.columnconfigure(1, weight=0, minsize=30)
+        cat_footer.columnconfigure(2, weight=0, minsize=120)
+        cat_footer.columnconfigure(3, weight=1)
+        cat_footer.columnconfigure(4, weight=0, minsize=80)
+        cat_footer.columnconfigure(5, weight=0, minsize=250)
 
-        self._cat_check_all_var = ctk.BooleanVar(value=False)
-        ctk.CTkCheckBox(cat_header, text="", variable=self._cat_check_all_var,
-                         width=30, fg_color=CLR_PRIMARY,
-                         command=self._cat_toggle_check_all
-                         ).grid(row=0, column=0, padx=4, pady=4, sticky="w")
+        self._cat_footer_checked_label = ctk.CTkLabel(
+            cat_footer, text="", font=FONT_CODE_SM, text_color="gray40")
+        self._cat_footer_checked_label.grid(row=0, column=0, padx=4, pady=4, sticky="w")
 
-        for col, (text, width) in [
-            (1, ("#", 30)), (2, ("Customer Code", 120)),
-            (3, ("Company Name", 0)), (4, ("Currency", 80)), (5, ("Category", 250)),
-        ]:
-            lbl = ctk.CTkLabel(cat_header, text=text, font=FONT_SECTION,
-                                anchor="w" if col == 3 else "center")
-            if width > 0:
-                lbl.configure(width=width)
-            lbl.grid(row=0, column=col, padx=4, pady=4, sticky="ew" if col == 3 else "")
+        self._cat_footer_code_label = ctk.CTkLabel(
+            cat_footer, text="", font=FONT_CODE_SM, text_color="gray40")
+        self._cat_footer_code_label.grid(row=0, column=2, padx=4, pady=4)
 
-        # Scrollable customer list
-        self._cat_scroll = ctk.CTkScrollableFrame(tab, height=300, fg_color="white")
+        # --- Scrollable grid (fills remaining space) ---
+        self._cat_scroll = ctk.CTkScrollableFrame(tab, height=300, fg_color="white", corner_radius=0)
         self._cat_scroll.pack(fill="both", expand=True, padx=20, pady=(0, 0))
         self._cat_scroll.columnconfigure(0, weight=0, minsize=30)
         self._cat_scroll.columnconfigure(1, weight=0, minsize=30)
@@ -947,30 +1091,6 @@ class App(ctk.CTk):
         self._cat_render_timer = None  # Debounce timer for search
         self._cat_page = 0            # Current page index (0-based)
         self._cat_page_size = 50      # Rows per page
-
-        # Action buttons (centered footer)
-        btn_frame = ctk.CTkFrame(tab, fg_color="transparent")
-        btn_frame.pack(pady=10)
-        ctk.CTkButton(btn_frame, text="Apply", width=70, fg_color=CLR_ACCENT,
-                       hover_color=CLR_SECONDARY,
-                       command=self._cat_bulk_apply).pack(side="left", padx=10)
-        ctk.CTkButton(btn_frame, text="Save Mapping", fg_color=CLR_PRIMARY,
-                       hover_color=CLR_SECONDARY,
-                       command=self._cat_save_mapping).pack(side="left", padx=10)
-
-    def _cat_set_filter(self, value):
-        """Set the category filter and re-render."""
-        if self._cat_combos:
-            self._cat_snapshot_combos()
-        self._cat_filter = value
-        self._cat_page = 0
-        # Update button appearance
-        for fval, btn in self._cat_filter_buttons.items():
-            if fval == value:
-                btn.configure(fg_color=CLR_PRIMARY, text_color="white")
-            else:
-                btn.configure(fg_color=CLR_BG_SEC, text_color="gray10")
-        self._cat_render_rows()
 
     def _cat_prev_page(self):
         """Go to previous page."""
@@ -1043,6 +1163,20 @@ class App(ctk.CTk):
                     self._cat_checked_codes.add(code)
                 else:
                     self._cat_checked_codes.discard(code)
+        self._cat_update_footer_checked()
+
+    def _cat_on_check_toggle(self, code: str, var):
+        """Handle individual checkbox toggle — update checked set and footer."""
+        if var.get():
+            self._cat_checked_codes.add(code)
+        else:
+            self._cat_checked_codes.discard(code)
+        self._cat_update_footer_checked()
+
+    def _cat_update_footer_checked(self):
+        """Update the checked count in the grid footer."""
+        self._cat_footer_checked_label.configure(
+            text=f"{len(self._cat_checked_codes)} checked")
 
     def _cat_load_customers(self):
         """Load customers from the selected entity's source DB."""
@@ -1075,6 +1209,11 @@ class App(ctk.CTk):
             self._cat_bulk_combo.set("(none)")
         else:
             self._cat_bulk_combo.configure(values=["(no categories loaded)"], state="disabled")
+
+        # Update category filter dropdown
+        filter_cat_values = ["All"] + self._cat_cat_values
+        self._cat_filter_category_combo.configure(values=filter_cat_values)
+        self._cat_filter_category_var.set("All")
 
         # Read customers from source DB
         conn = None
@@ -1122,8 +1261,12 @@ class App(ctk.CTk):
         self._cat_check_vars = []
         self._cat_visible_indices = []
         self._cat_page = 0
-        self._cat_set_filter("All")
-        self._cat_search_var.set("")
+        self._cat_filter_checked_var.set("All")
+        self._cat_filter_row_var.set("")
+        self._cat_filter_code_var.set("")
+        self._cat_filter_name_var.set("")
+        self._cat_filter_currency_var.set("")
+        self._cat_filter_category_var.set("All")
         # Cancel again in case set("") triggered a new timer
         if self._cat_render_timer is not None:
             self.after_cancel(self._cat_render_timer)
@@ -1140,8 +1283,8 @@ class App(ctk.CTk):
                 val = combo.get()
                 if val and val != "(none)":
                     self._cat_pending_map[code] = val
-                elif code in self._cat_pending_map:
-                    del self._cat_pending_map[code]
+                else:
+                    self._cat_pending_map[code] = "(none)"
                 # Snapshot checked state
                 if i < len(self._cat_check_vars):
                     if self._cat_check_vars[i].get():
@@ -1171,13 +1314,22 @@ class App(ctk.CTk):
             self._cat_page_label.configure(text="")
             self._cat_prev_btn.configure(state="disabled")
             self._cat_next_btn.configure(state="disabled")
+            self._cat_footer_checked_label.configure(text="")
+            self._cat_footer_code_label.configure(text="")
             return
 
-        search = self._cat_search_var.get().lower().strip()
         cat_values = self._cat_cat_values
         entity = self.config.entities[self._cat_entity_idx]
 
-        # Step 1: Build filtered list (filter + search)
+        # Per-column filters
+        f_checked = self._cat_filter_checked_var.get()
+        f_row = self._cat_filter_row_var.get().strip()
+        f_code = self._cat_filter_code_var.get().lower().strip()
+        f_name = self._cat_filter_name_var.get().lower().strip()
+        f_currency = self._cat_filter_currency_var.get().lower().strip()
+        f_category = self._cat_filter_category_var.get().strip()
+
+        # Step 1: Build filtered list
         filtered = []
         mapped_total = 0
 
@@ -1186,19 +1338,36 @@ class App(ctk.CTk):
             if has_mapping:
                 mapped_total += 1
 
-            # Apply category filter
-            if self._cat_filter == "Mapped" and not has_mapping:
+            # Apply per-column filters
+            if f_checked == "True" and code not in self._cat_checked_codes:
                 continue
-            elif self._cat_filter == "Unmapped" and has_mapping:
+            if f_checked == "False" and code in self._cat_checked_codes:
                 continue
-            elif self._cat_filter == "Checked" and code not in self._cat_checked_codes:
+            if f_row and f_row not in str(i + 1):
                 continue
-
-            # Apply search filter
-            if search:
-                if (search not in code.lower() and search not in name.lower()
-                        and search not in currency.lower()):
-                    continue
+            if f_code and f_code not in code.lower():
+                continue
+            if f_name and f_name not in name.lower():
+                continue
+            if f_currency and f_currency not in currency.lower():
+                continue
+            if f_category and f_category != "All":
+                cat_display = self._cat_pending_map.get(code, "")
+                if not cat_display:
+                    saved_code = entity.customer_category_map.get(code, "")
+                    if saved_code:
+                        for cv in cat_values:
+                            if cv.startswith(f"{saved_code} - ") or cv == saved_code:
+                                cat_display = cv
+                                break
+                if f_category == "(none)":
+                    # Show only unmapped customers
+                    if cat_display and cat_display != "(none)":
+                        continue
+                else:
+                    # Match exact category selection
+                    if cat_display != f_category:
+                        continue
 
             filtered.append(i)
 
@@ -1223,7 +1392,9 @@ class App(ctk.CTk):
             # Checkbox
             var = ctk.BooleanVar(value=(code in self._cat_checked_codes))
             ctk.CTkCheckBox(self._cat_scroll, text="", variable=var, width=30,
-                             fg_color=CLR_PRIMARY).grid(row=row, column=0, padx=4, pady=2, sticky="w")
+                             fg_color=CLR_PRIMARY,
+                             command=lambda c=code, v=var: self._cat_on_check_toggle(c, v)
+                             ).grid(row=row, column=0, padx=4, pady=2, sticky="w")
             self._cat_check_vars.append(var)
 
             # Row number (original index)
@@ -1287,10 +1458,26 @@ class App(ctk.CTk):
         self._cat_status_label.configure(
             text=f"{total} customers, {mapped_total} mapped, {unmapped_total} unmapped")
 
+        # Update grid footer counts
+        checked_count = len(self._cat_checked_codes)
+        self._cat_footer_checked_label.configure(text=f"{checked_count} checked")
+        total = len(self._cat_customers)
+        if total_filtered == total:
+            # No search filter active
+            if page_size >= 999999 or total_filtered == len(page_items):
+                self._cat_footer_code_label.configure(text=f"{total} codes")
+            else:
+                self._cat_footer_code_label.configure(
+                    text=f"{len(page_items)} of {total} codes")
+        else:
+            # Search filter active — show filtered of total
+            self._cat_footer_code_label.configure(
+                text=f"{total_filtered} of {total} codes")
+
     def _cat_bulk_apply(self):
         """Apply the bulk category selection to checked customer rows."""
         bulk_val = self._cat_bulk_combo.get()
-        if not bulk_val or bulk_val in ("(none)", "(no categories loaded)",
+        if not bulk_val or bulk_val in ("(no categories loaded)",
                                          "(load categories first)"):
             messagebox.showwarning("No Category", "Please select a category to apply.")
             return
@@ -1299,10 +1486,13 @@ class App(ctk.CTk):
         for i, var in enumerate(self._cat_check_vars):
             if var.get():
                 self._cat_combos[i].set(bulk_val)
-                # Also update pending map immediately
                 orig_idx = self._cat_visible_indices[i]
                 code = self._cat_customers[orig_idx][0]
-                self._cat_pending_map[code] = bulk_val
+                if bulk_val == "(none)":
+                    # Explicitly mark as cleared
+                    self._cat_pending_map[code] = "(none)"
+                else:
+                    self._cat_pending_map[code] = bulk_val
                 applied += 1
 
         if applied == 0:
@@ -1323,6 +1513,10 @@ class App(ctk.CTk):
                 self._cat_cat_values.append(f"{cat['code']} - {cat['description']}")
 
             self._cat_bulk_combo.configure(values=self._cat_cat_values, state="readonly")
+
+            # Update category filter dropdown
+            filter_cat_values = ["All"] + self._cat_cat_values
+            self._cat_filter_category_combo.configure(values=filter_cat_values)
 
             # Update all existing row combos
             for combo in self._cat_combos:
@@ -1358,8 +1552,11 @@ class App(ctk.CTk):
             if display_val and display_val != "(none)":
                 cat_code = display_val.split(" - ", 1)[0].strip()
                 new_map[code] = cat_code
+            elif code in self._cat_pending_map:
+                # Explicitly set to (none) — do not save mapping
+                unmapped += 1
             else:
-                # Fall back to existing saved mapping
+                # Never touched (not on any rendered page) — keep existing
                 existing = entity.customer_category_map.get(code, "")
                 if existing:
                     new_map[code] = existing
@@ -1502,23 +1699,11 @@ class App(ctk.CTk):
                             variable=self.sync_mode_var, value="purge").pack(
             side="left", padx=5)
 
-        # Action buttons
-        # Progress bar
-        self.progress_bar = ctk.CTkProgressBar(tab, progress_color=CLR_PRIMARY)
-        self.progress_bar.pack(fill="x", padx=20, pady=5)
-        self.progress_bar.set(0)
+        # --- Bottom section (pack with side="bottom" first to reserve space) ---
 
-        self.progress_label = ctk.CTkLabel(tab, text="Ready", anchor="w")
-        self.progress_label.pack(fill="x", padx=20)
-
-        # Log output
-        self.log_textbox = ctk.CTkTextbox(tab, height=300, state="disabled",
-                                           font=FONT_CODE)
-        self.log_textbox.pack(fill="both", expand=True, padx=20, pady=(5, 0))
-
-        # Action buttons (centered footer)
+        # Action buttons (always visible)
         btn_frame = ctk.CTkFrame(tab, fg_color="transparent")
-        btn_frame.pack(pady=10)
+        btn_frame.pack(side="bottom", pady=10)
 
         self.preview_btn = ctk.CTkButton(btn_frame, text="Load Preview",
                                           fg_color=CLR_ACCENT, hover_color=CLR_SECONDARY,
@@ -1538,6 +1723,21 @@ class App(ctk.CTk):
         ctk.CTkButton(btn_frame, text="Export Log", width=90,
                        fg_color=CLR_SECONDARY, hover_color=CLR_PRIMARY,
                        command=self._export_log).pack(side="left", padx=10)
+
+        # --- Main content ---
+
+        # Progress bar
+        self.progress_bar = ctk.CTkProgressBar(tab, progress_color=CLR_PRIMARY)
+        self.progress_bar.pack(fill="x", padx=20, pady=5)
+        self.progress_bar.set(0)
+
+        self.progress_label = ctk.CTkLabel(tab, text="Ready", anchor="w")
+        self.progress_label.pack(fill="x", padx=20)
+
+        # Log output
+        self.log_textbox = ctk.CTkTextbox(tab, height=300, state="disabled",
+                                           font=FONT_CODE)
+        self.log_textbox.pack(fill="both", expand=True, padx=20, pady=(5, 0))
 
     def _open_date_picker(self, target_var):
         """Open a calendar date picker popup."""

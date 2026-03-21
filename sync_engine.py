@@ -587,7 +587,7 @@ class SyncEngine:
         if missing:
             raise Exception(
                 f"Tax code(s) not found or inactive in consol DB: {', '.join(missing)}. "
-                "Please enable SST or create these tax codes in SQL Account."
+                "Please enable SST/ GST or create these tax codes in SQL Account > SST/ GST > Maintain Tax."
             )
 
         if self.logger:

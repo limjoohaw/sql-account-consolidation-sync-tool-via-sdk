@@ -3,6 +3,7 @@
 Reads AR transactions and master data from source SQL Account databases.
 """
 
+import datetime
 import fdb
 from dataclasses import dataclass, field
 from typing import Optional
@@ -89,6 +90,7 @@ class SourceReader:
         self.entity = entity
         self.logger = logger
         self.conn = None
+        self._conversion_date = None  # Cache: source DB SystemConversionDate
 
     def connect(self):
         self.conn = fdb.connect(
@@ -125,6 +127,35 @@ class SourceReader:
             return SYProfile()
         finally:
             cur.close()
+
+    def _get_conversion_date(self):
+        """Read SystemConversionDate from source DB SY_REGISTRY.
+
+        Returns datetime.date, or date.min if not found.
+        """
+        if self._conversion_date is not None:
+            return self._conversion_date
+        cur = self.conn.cursor()
+        try:
+            cur.execute(
+                "SELECT RVALUE FROM SY_REGISTRY "
+                "WHERE RNAME='SystemConversionDate'"
+            )
+            row = cur.fetchone()
+            if row and row[0]:
+                val = (row[0] or "").strip()
+                self._conversion_date = datetime.datetime.strptime(val, "%d/%m/%Y").date()
+                if self.logger:
+                    self.logger.info(f"Source DB SystemConversionDate = '{val}'")
+            else:
+                self._conversion_date = datetime.date.min
+        except Exception as e:
+            if self.logger:
+                self.logger.warning(f"Could not read source SystemConversionDate: {e}")
+            self._conversion_date = datetime.date.min
+        finally:
+            cur.close()
+        return self._conversion_date
 
     def read_customers(self) -> list:
         """Read all customers with billing branch details via JOIN."""
@@ -295,9 +326,21 @@ class SourceReader:
                     local_amount=float(row[9] or 0),
                 )
 
-                # Read detail lines
+                # Read detail lines — skip for opening balance docs
+                # (before source SystemConversionDate, no detail lines exist)
                 if detail_table:
-                    doc.details = self._read_details(dockey, detail_table)
+                    conv_date = self._get_conversion_date()
+                    doc_date_obj = None
+                    if doc.doc_date:
+                        try:
+                            doc_date_obj = datetime.datetime.strptime(
+                                doc.doc_date[:10], "%Y-%m-%d"
+                            ).date()
+                        except ValueError:
+                            pass
+                    if doc_date_obj is None or conv_date == datetime.date.min \
+                            or doc_date_obj >= conv_date:
+                        doc.details = self._read_details(dockey, detail_table)
 
                 # Read knock-offs for CN and CT (both knock off IV/DN)
                 if doc_type in ("CN", "CT"):
@@ -433,7 +476,7 @@ class SourceReader:
                     description=(row[2] or "").strip(),
                     tax=(row[3] or "").strip(),
                     tax_rate=(row[4] or "").strip(),
-                    tax_inclusive=(row[5] or "F").strip(),
+                    tax_inclusive="T" if self._parse_bool_field(row[5]) else "F",
                     tax_amt=float(row[6] or 0),
                     exempted_tax_rate=(row[7] or "").strip(),
                     exempted_tax_amt=float(row[8] or 0),
@@ -478,8 +521,8 @@ class SourceReader:
         finally:
             cur.close()
 
-    def _parse_cancelled(self, value) -> bool:
-        """Parse CANCELLED field - handles both bool (v207+) and string ('T'/'F')."""
+    def _parse_bool_field(self, value) -> bool:
+        """Parse boolean field - handles both bool (Firebird v207+) and string ('T'/'F')."""
         if isinstance(value, bool):
             return value
         if isinstance(value, str):

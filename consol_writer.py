@@ -58,6 +58,55 @@ class ConsolWriter:
         self.app = sdk_app
         self.logger = logger
         self._default_accounts = {}  # Cache: {"SalesAccount": "500-000", ...}
+        self._conversion_date = None  # Cache: consol DB SystemConversionDate
+
+    def _get_conversion_date(self) -> datetime.date:
+        """Get SystemConversionDate from consol DB SY_REGISTRY.
+
+        Returns datetime.date for comparison, or date.min if not found.
+        """
+        if self._conversion_date is not None:
+            return self._conversion_date
+        try:
+            ds = self.app.DBManager.NewDataSet(
+                "SELECT RVALUE FROM SY_REGISTRY "
+                "WHERE RNAME='SystemConversionDate'"
+            )
+            ds.First()
+            val = (ds.FindField("RVALUE").AsString or "").strip() if not ds.Eof else ""
+            if val:
+                # Format: dd/mm/yyyy
+                self._conversion_date = datetime.datetime.strptime(val, "%d/%m/%Y").date()
+            else:
+                self._conversion_date = datetime.date.min
+            if self.logger:
+                self.logger.info(f"Consol DB SystemConversionDate = '{val}'")
+        except Exception as e:
+            if self.logger:
+                self.logger.warning(f"Could not read SystemConversionDate: {e}")
+            self._conversion_date = datetime.date.min
+        return self._conversion_date
+
+    def _is_before_conversion_date(self, doc_date_str) -> bool:
+        """Check if a document date is before the consol DB's SystemConversionDate."""
+        if not doc_date_str:
+            return False
+        conv_date = self._get_conversion_date()
+        if conv_date == datetime.date.min:
+            return False
+        try:
+            date_str = str(doc_date_str).strip()[:10]
+            # Firebird returns YYYY-MM-DD
+            doc_date = datetime.datetime.strptime(date_str, "%Y-%m-%d").date()
+            return doc_date < conv_date
+        except ValueError:
+            pass
+        try:
+            # dd/mm/yyyy format
+            doc_date = datetime.datetime.strptime(date_str, "%d/%m/%Y").date()
+            return doc_date < conv_date
+        except ValueError:
+            return False
 
     def _get_default_account(self, registry_name: str) -> str:
         """Get default GL account from consol DB SY_REGISTRY."""
@@ -553,45 +602,78 @@ class ConsolWriter:
 
             biz.New()
 
-            # Header
+            # Detect opening balance based on consol DB SystemConversionDate
+            details = data.get("details", [])
+            is_opening_balance = self._is_before_conversion_date(data.get("doc_date"))
+
+            # Header — SDK field order: CODE, DOCNO, DOCDATE, POSTDATE,
+            # DESCRIPTION, CURRENCYCODE, CURRENCYRATE, DOCAMT, LOCALDOCAMT
+            main_ds.FindField("CODE").AsString = data["code"]
             main_ds.FindField("DOCNO").AsString = doc_no
             if data.get("doc_date"):
                 main_ds.FindField("DOCDATE").AsString = self._parse_date(data["doc_date"])
             if data.get("post_date"):
                 main_ds.FindField("POSTDATE").AsString = self._parse_date(data["post_date"])
-            main_ds.FindField("CODE").AsString = data["code"]
             if data.get("description"):
                 main_ds.FindField("DESCRIPTION").AsString = data["description"]
             if data.get("currency_code"):
                 main_ds.FindField("CURRENCYCODE").AsString = data["currency_code"]
                 main_ds.FindField("CURRENCYRATE").AsFloat = data.get("currency_rate", 1.0)
+            if is_opening_balance:
+                main_ds.FindField("DOCAMT").AsFloat = data.get("amount", 0)
+                main_ds.FindField("LOCALDOCAMT").AsFloat = data.get("local_amount", data.get("amount", 0))
 
-            # Detail lines — use consol DB default GL account
+            # Detail lines — SDK field order: SEQ, ACCOUNT, DESCRIPTION,
+            # AMOUNT, TAX, TAXRATE, TAXINCLUSIVE, TAXAMT,
+            # EXEMPTED_TAXRATE, EXEMPTED_TAXAMT
             default_account = self._account_for_doc_type(doc_type)
-            for i, dtl in enumerate(data.get("details", [])):
+            suffix = ""
+
+            if is_opening_balance:
+                # Opening balance: header-only save, no detail lines.
+                # SDK clears detail amounts for dates before SystemConversionDate.
+                suffix = " (opening balance)"
+            elif not details and data.get("amount"):
+                # Post-conversion but source has no detail lines (source opening
+                # balance imported into consol as current-year transaction).
+                # Create synthetic single detail line with header amount.
                 detail_ds.Append()
-                detail_ds.FindField("SEQ").value = i + 1
+                detail_ds.FindField("SEQ").value = 1
                 if default_account:
                     detail_ds.FindField("ACCOUNT").AsString = default_account
-                # Description = "OriginalGLAccount || OriginalDescription"
-                desc_parts = []
-                if dtl.account:
-                    desc_parts.append(dtl.account)
-                if dtl.description:
-                    desc_parts.append(dtl.description)
-                if desc_parts:
-                    detail_ds.FindField("DESCRIPTION").AsString = " || ".join(desc_parts)
-                if dtl.tax:
-                    detail_ds.FindField("TAX").AsString = dtl.tax
-                if dtl.tax_rate:
-                    detail_ds.FindField("TAXRATE").AsString = dtl.tax_rate
-                detail_ds.FindField("TAXINCLUSIVE").value = (dtl.tax_inclusive == "T")
-                detail_ds.FindField("TAXAMT").AsFloat = dtl.tax_amt
-                if dtl.exempted_tax_rate:
-                    detail_ds.FindField("EXEMPTED_TAXRATE").AsString = dtl.exempted_tax_rate
-                detail_ds.FindField("EXEMPTED_TAXAMT").AsFloat = dtl.exempted_tax_amt
-                detail_ds.FindField("AMOUNT").AsFloat = dtl.amount
+                if data.get("description"):
+                    detail_ds.FindField("DESCRIPTION").AsString = data["description"]
+                detail_ds.FindField("AMOUNT").AsFloat = data["amount"]
+                detail_ds.FindField("TAXINCLUSIVE").value = False
+                detail_ds.FindField("TAXAMT").AsFloat = 0
+                detail_ds.FindField("EXEMPTED_TAXAMT").AsFloat = 0
                 detail_ds.Post()
+                suffix = " (opening balance, synthetic detail)"
+            else:
+                for i, dtl in enumerate(details):
+                    detail_ds.Append()
+                    detail_ds.FindField("SEQ").value = i + 1
+                    if default_account:
+                        detail_ds.FindField("ACCOUNT").AsString = default_account
+                    # Description = "OriginalGLAccount || OriginalDescription"
+                    desc_parts = []
+                    if dtl.account:
+                        desc_parts.append(dtl.account)
+                    if dtl.description:
+                        desc_parts.append(dtl.description)
+                    if desc_parts:
+                        detail_ds.FindField("DESCRIPTION").AsString = " || ".join(desc_parts)
+                    if dtl.tax:
+                        detail_ds.FindField("TAX").AsString = dtl.tax
+                    if dtl.tax_rate:
+                        detail_ds.FindField("TAXRATE").AsString = dtl.tax_rate
+                    detail_ds.FindField("TAXINCLUSIVE").value = (dtl.tax_inclusive == "T")
+                    detail_ds.FindField("AMOUNT").AsFloat = dtl.amount
+                    detail_ds.FindField("TAXAMT").AsFloat = dtl.tax_amt
+                    if dtl.exempted_tax_rate:
+                        detail_ds.FindField("EXEMPTED_TAXRATE").AsString = dtl.exempted_tax_rate
+                    detail_ds.FindField("EXEMPTED_TAXAMT").AsFloat = dtl.exempted_tax_amt
+                    detail_ds.Post()
 
             # Knock-off for CN (CN knocks off IV/DN)
             if doc_type == "CN" and data.get("knockoffs"):
@@ -601,7 +683,7 @@ class ConsolWriter:
             biz.Save()
             biz.Close()
             if self.logger:
-                self.logger.success(f"{doc_type} '{doc_no}' inserted")
+                self.logger.success(f"{doc_type} '{doc_no}' inserted{suffix}")
             return True
 
         except Exception as e:
