@@ -266,27 +266,34 @@ class SyncEngine:
                     pm_lookup[pm["pm_code"]] = f"{pm['journal']}-{pm['isocode']}"
                 transformer.pm_lookup = pm_lookup
 
-                # Read customers
+                # Read customers — only import those with category mappings
                 customers = reader.read_customers() if sync_customers else []
+                mapped_codes = set(entity.customer_category_map.keys())
 
-                # Validate all customers have category mappings
                 if customers:
-                    unmapped = [c.code for c in customers
-                                if c.code not in entity.customer_category_map]
-                    if unmapped:
-                        raise Exception(
-                            f"Entity '{entity.name}' has {len(unmapped)} unmapped customer(s): "
-                            f"{', '.join(unmapped[:5])}"
-                            f"{'...' if len(unmapped) > 5 else ''}. "
-                            "Please assign categories in the Category Mapping tab."
+                    total_customers = len(customers)
+                    customers = [c for c in customers if c.code in mapped_codes]
+                    skipped_customers = total_customers - len(customers)
+                    if skipped_customers and self.logger:
+                        self.logger.info(
+                            f"Skipping {skipped_customers} unmapped customer(s) "
+                            f"(no category assigned)"
                         )
 
-                # Read documents per module
+                # Read documents per module — skip docs for unmapped customers
                 all_docs = {}
                 for mod in modules:
-                    all_docs[mod] = reader.read_documents(
+                    docs = reader.read_documents(
                         mod, date_from, date_to, entity.last_synced
                     )
+                    before = len(docs)
+                    docs = [doc for doc in docs if doc.code in mapped_codes]
+                    skipped = before - len(docs)
+                    if skipped and self.logger:
+                        self.logger.info(
+                            f"Skipped {skipped} {mod} doc(s) for unmapped customers"
+                        )
+                    all_docs[mod] = docs
 
             # Step 2: Write to consol DB via SDK
             with open_consol_session(self.config.consol_db, self.logger) as consol_app:

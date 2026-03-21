@@ -221,7 +221,7 @@ class App(ctk.CTk):
         )
         self.tabview.pack(fill="both", expand=True, padx=10, pady=10)
 
-        self.tabview.add("Sync Dashboard")
+        self.tabview.add("Sync")
         self.tabview.add("Category Mapping")
         self.tabview.add("Entity Manager")
         self.tabview.add("Settings")
@@ -636,8 +636,10 @@ class App(ctk.CTk):
                 ctk.CTkLabel(dialog, text=label, font=FONT_SECTION).grid(
                     row=row, column=0, sticky="w", padx=15, pady=4)
             var = ctk.StringVar(value=default)
-            entry = ctk.CTkEntry(dialog, textvariable=var, width=350,
-                                  placeholder_text=hint)
+            entry_kwargs = {"textvariable": var, "width": 350, "placeholder_text": hint}
+            if key == "fb_password":
+                entry_kwargs["show"] = "*"
+            entry = ctk.CTkEntry(dialog, **entry_kwargs)
             entry.grid(row=row, column=1, padx=10, pady=4)
             fields[key] = var
 
@@ -673,7 +675,7 @@ class App(ctk.CTk):
         row += 1
 
         self._info_name_var = ctk.StringVar(value=entity.name or "(click Test Connection)")
-        self._info_remark_var = ctk.StringVar(value=entity.remark or "")
+        self._info_remark_var = ctk.StringVar(value=entity.remark or "(click Test Connection)")
         self._info_prefix_var = ctk.StringVar(value=entity.prefix or "(click Test Connection)")
 
         ctk.CTkLabel(dialog, text="Company Name:", font=FONT_SECTION).grid(
@@ -850,6 +852,53 @@ class App(ctk.CTk):
                                                anchor="w", text_color="gray40")
         self._cat_status_label.pack(fill="x", padx=25, pady=(2, 2))
 
+        # Filter toggle buttons
+        filter_frame = ctk.CTkFrame(tab, fg_color="transparent")
+        filter_frame.pack(fill="x", padx=20, pady=(2, 0))
+
+        ctk.CTkLabel(filter_frame, text="Filter:", font=FONT_SECTION
+                      ).pack(side="left", padx=(5, 8))
+        self._cat_filter = "All"
+        self._cat_filter_buttons = {}
+        for fval in ["All", "Mapped", "Unmapped", "Checked"]:
+            btn = ctk.CTkButton(
+                filter_frame, text=fval, width=80, height=26,
+                fg_color=CLR_PRIMARY if fval == "All" else CLR_BG_SEC,
+                text_color="white" if fval == "All" else "gray10",
+                hover_color=CLR_SECONDARY,
+                command=lambda v=fval: self._cat_set_filter(v))
+            btn.pack(side="left", padx=2)
+            self._cat_filter_buttons[fval] = btn
+
+        # Pagination bar
+        page_frame = ctk.CTkFrame(tab, fg_color="transparent")
+        page_frame.pack(fill="x", padx=20, pady=(2, 0))
+
+        self._cat_prev_btn = ctk.CTkButton(
+            page_frame, text="< Prev", width=60, height=26,
+            fg_color=CLR_SECONDARY, hover_color=CLR_PRIMARY,
+            command=self._cat_prev_page, state="disabled")
+        self._cat_prev_btn.pack(side="left", padx=2)
+
+        self._cat_page_label = ctk.CTkLabel(
+            page_frame, text="", font=FONT_CAPTION, text_color="gray40")
+        self._cat_page_label.pack(side="left", padx=10)
+
+        self._cat_next_btn = ctk.CTkButton(
+            page_frame, text="Next >", width=60, height=26,
+            fg_color=CLR_SECONDARY, hover_color=CLR_PRIMARY,
+            command=self._cat_next_page, state="disabled")
+        self._cat_next_btn.pack(side="left", padx=2)
+
+        ctk.CTkLabel(page_frame, text="  Show:", font=FONT_CAPTION
+                      ).pack(side="left", padx=(15, 3))
+        self._cat_page_size_var = ctk.StringVar(value="50")
+        page_size_combo = ctk.CTkComboBox(
+            page_frame, values=["50", "100", "200", "All"],
+            variable=self._cat_page_size_var, width=70, height=26,
+            state="readonly", command=self._cat_page_size_changed)
+        page_size_combo.pack(side="left", padx=2)
+
         # Table header with check-all checkbox
         cat_header = ctk.CTkFrame(tab, fg_color=CLR_BG_SEC)
         cat_header.pack(fill="x", padx=20, pady=(0, 0))
@@ -896,6 +945,8 @@ class App(ctk.CTk):
         self._cat_entity_idx = -1      # Currently selected entity index
         self._cat_cat_values = []      # Cached category display values
         self._cat_render_timer = None  # Debounce timer for search
+        self._cat_page = 0            # Current page index (0-based)
+        self._cat_page_size = 50      # Rows per page
 
         # Action buttons (centered footer)
         btn_frame = ctk.CTkFrame(tab, fg_color="transparent")
@@ -906,6 +957,47 @@ class App(ctk.CTk):
         ctk.CTkButton(btn_frame, text="Save Mapping", fg_color=CLR_PRIMARY,
                        hover_color=CLR_SECONDARY,
                        command=self._cat_save_mapping).pack(side="left", padx=10)
+
+    def _cat_set_filter(self, value):
+        """Set the category filter and re-render."""
+        if self._cat_combos:
+            self._cat_snapshot_combos()
+        self._cat_filter = value
+        self._cat_page = 0
+        # Update button appearance
+        for fval, btn in self._cat_filter_buttons.items():
+            if fval == value:
+                btn.configure(fg_color=CLR_PRIMARY, text_color="white")
+            else:
+                btn.configure(fg_color=CLR_BG_SEC, text_color="gray10")
+        self._cat_render_rows()
+
+    def _cat_prev_page(self):
+        """Go to previous page."""
+        if self._cat_page > 0:
+            if self._cat_combos:
+                self._cat_snapshot_combos()
+            self._cat_page -= 1
+            self._cat_render_rows()
+
+    def _cat_next_page(self):
+        """Go to next page."""
+        if self._cat_combos:
+            self._cat_snapshot_combos()
+        self._cat_page += 1
+        self._cat_render_rows()
+
+    def _cat_page_size_changed(self, value=None):
+        """Handle page size dropdown change."""
+        if self._cat_combos:
+            self._cat_snapshot_combos()
+        val = self._cat_page_size_var.get()
+        if val == "All":
+            self._cat_page_size = 999999
+        else:
+            self._cat_page_size = int(val)
+        self._cat_page = 0
+        self._cat_render_rows()
 
     def _refresh_cat_entity_list(self):
         """Refresh the entity dropdown in the Category Mapping tab."""
@@ -935,6 +1027,7 @@ class App(ctk.CTk):
 
     def _cat_schedule_render(self):
         """Debounce search: re-render rows after 200ms idle."""
+        self._cat_page = 0  # Reset to first page on search
         if self._cat_render_timer is not None:
             self.after_cancel(self._cat_render_timer)
         self._cat_render_timer = self.after(200, self._cat_render_rows)
@@ -1021,13 +1114,15 @@ class App(ctk.CTk):
                     self._cat_pending_map[code] = cv
                     break
 
-        # Cancel any pending debounce, clear search, and render fresh
+        # Cancel any pending debounce, reset filter/page, clear search, render fresh
         if self._cat_render_timer is not None:
             self.after_cancel(self._cat_render_timer)
             self._cat_render_timer = None
         self._cat_combos = []  # Prevent snapshot of old entity's combos
         self._cat_check_vars = []
         self._cat_visible_indices = []
+        self._cat_page = 0
+        self._cat_set_filter("All")
         self._cat_search_var.set("")
         # Cancel again in case set("") triggered a new timer
         if self._cat_render_timer is not None:
@@ -1055,7 +1150,9 @@ class App(ctk.CTk):
                         self._cat_checked_codes.discard(code)
 
     def _cat_render_rows(self):
-        """Clear and re-render the customer grid, applying search filter."""
+        """Clear and re-render the customer grid with filter, search, and pagination."""
+        import math
+
         # Snapshot current selections before destroying widgets
         if self._cat_combos:
             self._cat_snapshot_combos()
@@ -1071,20 +1168,31 @@ class App(ctk.CTk):
             ctk.CTkLabel(self._cat_scroll, text="No customers found in source DB.",
                           text_color="gray40").grid(row=0, column=0, columnspan=6, pady=20)
             self._cat_status_label.configure(text="0 customers")
+            self._cat_page_label.configure(text="")
+            self._cat_prev_btn.configure(state="disabled")
+            self._cat_next_btn.configure(state="disabled")
             return
 
         search = self._cat_search_var.get().lower().strip()
         cat_values = self._cat_cat_values
         entity = self.config.entities[self._cat_entity_idx]
 
+        # Step 1: Build filtered list (filter + search)
+        filtered = []
         mapped_total = 0
-        visible_count = 0
 
         for i, (code, name, currency) in enumerate(self._cat_customers):
-            # Count total mapped (regardless of filter)
             has_mapping = code in self._cat_pending_map or code in entity.customer_category_map
             if has_mapping:
                 mapped_total += 1
+
+            # Apply category filter
+            if self._cat_filter == "Mapped" and not has_mapping:
+                continue
+            elif self._cat_filter == "Unmapped" and has_mapping:
+                continue
+            elif self._cat_filter == "Checked" and code not in self._cat_checked_codes:
+                continue
 
             # Apply search filter
             if search:
@@ -1092,18 +1200,34 @@ class App(ctk.CTk):
                         and search not in currency.lower()):
                     continue
 
-            row = visible_count
-            visible_count += 1
-            self._cat_visible_indices.append(i)
+            filtered.append(i)
 
-            # Checkbox (restore checked state from persistent set)
+        # Step 2: Pagination
+        total_filtered = len(filtered)
+        page_size = self._cat_page_size
+        total_pages = max(1, math.ceil(total_filtered / page_size)) if page_size < 999999 else 1
+
+        # Clamp page
+        if self._cat_page >= total_pages:
+            self._cat_page = max(0, total_pages - 1)
+
+        start = self._cat_page * page_size
+        end = min(start + page_size, total_filtered)
+        page_items = filtered[start:end]
+
+        # Step 3: Render rows for current page
+        for row, orig_idx in enumerate(page_items):
+            code, name, currency = self._cat_customers[orig_idx]
+            self._cat_visible_indices.append(orig_idx)
+
+            # Checkbox
             var = ctk.BooleanVar(value=(code in self._cat_checked_codes))
             ctk.CTkCheckBox(self._cat_scroll, text="", variable=var, width=30,
                              fg_color=CLR_PRIMARY).grid(row=row, column=0, padx=4, pady=2, sticky="w")
             self._cat_check_vars.append(var)
 
-            # Row number
-            ctk.CTkLabel(self._cat_scroll, text=str(i + 1), width=30,
+            # Row number (original index)
+            ctk.CTkLabel(self._cat_scroll, text=str(orig_idx + 1), width=30,
                           font=FONT_CODE_SM, text_color="gray40").grid(row=row, column=1, padx=4, pady=2)
 
             # Customer code
@@ -1143,16 +1267,25 @@ class App(ctk.CTk):
         # Reset check-all
         self._cat_check_all_var.set(False)
 
+        # Update page navigation
+        if total_filtered == 0:
+            self._cat_page_label.configure(text="No results")
+        elif page_size >= 999999:
+            self._cat_page_label.configure(text=f"Showing all {total_filtered}")
+        else:
+            self._cat_page_label.configure(
+                text=f"Page {self._cat_page + 1} of {total_pages}  "
+                     f"({start + 1}-{end} of {total_filtered})")
+        self._cat_prev_btn.configure(
+            state="normal" if self._cat_page > 0 else "disabled")
+        self._cat_next_btn.configure(
+            state="normal" if self._cat_page < total_pages - 1 else "disabled")
+
         # Update status
         total = len(self._cat_customers)
         unmapped_total = total - mapped_total
-        if search:
-            self._cat_status_label.configure(
-                text=f"Showing {visible_count} of {total} customers, "
-                     f"{mapped_total} mapped, {unmapped_total} unmapped")
-        else:
-            self._cat_status_label.configure(
-                text=f"{total} customers, {mapped_total} mapped, {unmapped_total} unmapped")
+        self._cat_status_label.configure(
+            text=f"{total} customers, {mapped_total} mapped, {unmapped_total} unmapped")
 
     def _cat_bulk_apply(self):
         """Apply the bulk category selection to checked customer rows."""
@@ -1249,7 +1382,7 @@ class App(ctk.CTk):
     # SYNC DASHBOARD TAB
     # ==================================================================
     def _build_sync_tab(self):
-        tab = self.tabview.tab("Sync Dashboard")
+        tab = self.tabview.tab("Sync")
 
         # --- Unified controls grid ---
         ctrl_frame = ctk.CTkFrame(tab)
@@ -1387,7 +1520,7 @@ class App(ctk.CTk):
         btn_frame = ctk.CTkFrame(tab, fg_color="transparent")
         btn_frame.pack(pady=10)
 
-        self.preview_btn = ctk.CTkButton(btn_frame, text="Preview (Dry Run)",
+        self.preview_btn = ctk.CTkButton(btn_frame, text="Load Preview",
                                           fg_color=CLR_ACCENT, hover_color=CLR_SECONDARY,
                                           command=self._run_preview)
         self.preview_btn.pack(side="left", padx=10)
