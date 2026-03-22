@@ -31,6 +31,22 @@ def _translate_error(error_msg: str) -> str:
     return error_msg
 
 
+def cleanup_old_logs(keep=50):
+    """Delete old log files, keeping the most recent `keep` files."""
+    if not os.path.isdir(LOG_DIR):
+        return
+    log_files = sorted(
+        [os.path.join(LOG_DIR, f) for f in os.listdir(LOG_DIR) if f.endswith(".log")],
+        key=os.path.getmtime,
+        reverse=True,
+    )
+    for old_file in log_files[keep:]:
+        try:
+            os.remove(old_file)
+        except OSError:
+            pass
+
+
 class SyncLogger:
     """Logger that writes to both file and provides callbacks for UI updates."""
 

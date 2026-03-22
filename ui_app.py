@@ -1,6 +1,7 @@
 """CustomTkinter UI for SQL Account Consolidation Sync Tool."""
 
 import os
+import sys
 import calendar
 import threading
 import pythoncom
@@ -180,10 +181,23 @@ class SearchableComboBox(ctk.CTkFrame):
 
 class App(ctk.CTk):
     def __init__(self):
+        # Set AppUserModelID so Windows taskbar shows our icon, not Python's
+        import ctypes
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("eStream.SQLAccConsolSync")
+
         super().__init__()
         self.title(f"{APP_NAME} v{APP_VERSION}")
         self.geometry("950x700")
         self.minsize(800, 600)
+
+        # Set window/taskbar icon (works in dev and PyInstaller bundle)
+        if getattr(sys, 'frozen', False):
+            base_path = sys._MEIPASS
+        else:
+            base_path = os.path.dirname(os.path.abspath(__file__))
+        icon_path = os.path.join(base_path, "icon.ico")
+        if os.path.exists(icon_path):
+            self.iconbitmap(icon_path)
 
         self.config = load_config()
         self.sync_engine = None

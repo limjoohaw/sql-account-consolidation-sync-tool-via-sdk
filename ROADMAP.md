@@ -10,9 +10,9 @@ Project tracking for **SQL Consol Sync** (`SQLAccConsolSync.exe`) — SQL Accoun
 
 ### High Priority
 
-- [ ] **App logo / icon**
-  - Design or source an icon for the tool (window icon + taskbar + .exe icon)
-  - Apply via `self.iconbitmap()` or `self.wm_iconphoto()` in CustomTkinter
+- [x] **App logo / icon**
+  - `icon.png` (source 2583x2499 RGBA) → `icon.ico` (multi-size: 16–256px)
+  - Applied via `self.iconbitmap()` in `ui_app.py`, with PyInstaller `_MEIPASS` path resolution
 
 - [x] **Full user manual guide**
   - Create `USER_GUIDE.md` covering: installation, configuration, first-time setup, recurring sync workflow, Purge & Re-sync, troubleshooting
@@ -45,10 +45,9 @@ Project tracking for **SQL Consol Sync** (`SQLAccConsolSync.exe`) — SQL Accoun
 
 ### Medium Priority
 
-- [ ] **Log file auto-cleanup**
-  - Sync logs accumulate in `logs/` folder with no cleanup
-  - Auto-delete old logs on app startup (e.g. keep last 30 days or last 50 files)
-  - Optionally add "Clear Logs" button in Settings or Sync Dashboard
+- [x] **Log file auto-cleanup**
+  - On app startup, keeps last 50 log files, deletes the rest (sorted by modification time)
+  - `cleanup_old_logs()` in `logger.py`, called from `main.py`
 
 ### Low Priority
 

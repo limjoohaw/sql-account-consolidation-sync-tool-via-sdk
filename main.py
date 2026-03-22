@@ -6,6 +6,9 @@ import traceback
 
 def main():
     try:
+        from logger import cleanup_old_logs
+        cleanup_old_logs()
+
         from ui_app import App
         app = App()
         app.mainloop()
