@@ -10,7 +10,7 @@ and verify the connection before proceeding.
 """
 
 import win32com.client
-from config import EntityConfig, ConsolDBConfig
+from config import ConsolDBConfig
 from logger import SyncLogger
 
 
@@ -63,6 +63,7 @@ class SDKSession:
         Queries SY_PROFILE and checks the FDB filename to prevent
         accidentally writing to the wrong database.
         """
+        ds = None
         try:
             # Check the actual connected database file
             ds = self.app.DBManager.NewDataSet(
@@ -91,6 +92,12 @@ class SDKSession:
         except Exception as e:
             if self.logger:
                 self.logger.warning(f"Could not verify database (non-fatal): {e}")
+        finally:
+            if ds:
+                try:
+                    ds.Close()
+                except Exception:
+                    pass
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         try:
@@ -104,17 +111,6 @@ class SDKSession:
         finally:
             self.app = None
         return False  # Do not suppress exceptions
-
-
-def open_source_session(entity: EntityConfig, logger: SyncLogger = None) -> SDKSession:
-    """Create an SDK session for a source database."""
-    return SDKSession(
-        dcf_path=entity.dcf_path,
-        db_name=entity.db_name,
-        username=entity.username,
-        password=entity.password,
-        logger=logger,
-    )
 
 
 def open_consol_session(consol: ConsolDBConfig, logger: SyncLogger = None) -> SDKSession:

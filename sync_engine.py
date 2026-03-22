@@ -6,6 +6,7 @@ Supports dry-run preview and incremental sync.
 """
 
 import datetime
+import time
 import fdb
 from dataclasses import dataclass, field
 from config import AppConfig, EntityConfig, save_config
@@ -83,6 +84,18 @@ _CURRENCY_NAMES = {
     "XPF": "CFP Franc", "YER": "Yemeni Rial", "ZAR": "Rand",
     "ZMW": "Zambian Kwacha", "ZWL": "Zimbabwe Dollar",
 }
+
+
+def _format_duration(seconds: float) -> str:
+    """Format seconds into human-readable duration (e.g. '2m 35s')."""
+    seconds = int(seconds)
+    if seconds < 60:
+        return f"{seconds}s"
+    minutes, secs = divmod(seconds, 60)
+    if minutes < 60:
+        return f"{minutes}m {secs}s"
+    hours, mins = divmod(minutes, 60)
+    return f"{hours}h {mins}m {secs}s"
 
 
 @dataclass
@@ -233,6 +246,7 @@ class SyncEngine:
                      purge_resync: bool = False) -> SyncResult:
         """Sync a single entity."""
         result = SyncResult(entity_name=entity.name)
+        entity_start = time.time()
 
         try:
             # Step 1: Read source data
@@ -330,6 +344,10 @@ class SyncEngine:
                 self.logger.error(f"Sync failed for '{entity.name}'", e)
             result.errors.append(str(e))
 
+        if self.logger:
+            duration = _format_duration(time.time() - entity_start)
+            self.logger.info(f"Entity '{entity.name}' completed in {duration}")
+
         return result
 
     def _delete_entity_documents(self, prefix: str, modules: list,
@@ -408,12 +426,16 @@ class SyncEngine:
                     try:
                         consol_cur = consol_conn.cursor()
 
+                        mapped_codes = set(entity.customer_category_map.keys())
+
                         for mod in modules:
                             if mod not in IMPORT_ORDER:
                                 continue
 
-                            # Read source documents
+                            # Read source documents (filter unmapped customers
+                            # to match actual sync behavior)
                             source_docs = reader.read_documents(mod, date_from, date_to)
+                            source_docs = [d for d in source_docs if d.code in mapped_codes]
                             source_map = {}
                             for doc in source_docs:
                                 transformed_no = transformer.transform_doc_no(doc.doc_no)
@@ -626,6 +648,7 @@ class SyncEngine:
         synced = 0
         skipped = 0
         failed = 0
+        mod_start = time.time()
 
         if self.logger:
             self.logger.info(f"--- Syncing {total} {doc_type} documents ---")
@@ -668,6 +691,8 @@ class SyncEngine:
         result.docs_failed[doc_type] = failed
 
         if self.logger:
+            duration = _format_duration(time.time() - mod_start)
             self.logger.info(
-                f"{doc_type} complete: {synced} synced, {skipped} skipped, {failed} failed"
+                f"{doc_type} complete: {synced} synced, {skipped} skipped, {failed} failed "
+                f"(Duration: {duration})"
             )

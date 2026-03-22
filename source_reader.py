@@ -522,9 +522,11 @@ class SourceReader:
             cur.close()
 
     def _parse_bool_field(self, value) -> bool:
-        """Parse boolean field - handles both bool (Firebird v207+) and string ('T'/'F')."""
+        """Parse boolean field - handles bool (v207+), int (1/0, pre-v207), and string ('T'/'F')."""
         if isinstance(value, bool):
             return value
+        if isinstance(value, int):
+            return value != 0
         if isinstance(value, str):
             return value.strip().upper() in ("T", "TRUE")
         return False

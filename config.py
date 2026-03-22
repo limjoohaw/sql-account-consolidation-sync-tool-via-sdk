@@ -65,8 +65,13 @@ def load_config() -> AppConfig:
         if not os.path.exists(CONFIG_FILE):
             return AppConfig()
 
-        with open(CONFIG_FILE, "r") as f:
-            data = json.load(f)
+        try:
+            with open(CONFIG_FILE, "r") as f:
+                data = json.load(f)
+        except (json.JSONDecodeError, ValueError) as e:
+            import logging
+            logging.warning(f"config.json is malformed, using defaults: {e}")
+            return AppConfig()
 
         config = AppConfig()
         # Load consol DB config

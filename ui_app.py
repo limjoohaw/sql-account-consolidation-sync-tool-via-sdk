@@ -6,13 +6,13 @@ import threading
 import pythoncom
 import fdb
 import customtkinter as ctk
-from datetime import date, timedelta
+from datetime import date, datetime
 import tkinter as tk
 from tkinter import filedialog, messagebox
 from config import AppConfig, EntityConfig, ConsolDBConfig, load_config, save_config
-from sync_engine import SyncEngine, IMPORT_ORDER
+from sync_engine import SyncEngine, IMPORT_ORDER, _format_duration
 from logger import SyncLogger
-from version import APP_NAME, APP_VERSION, APP_BUILD_DATE
+from version import APP_NAME, APP_VERSION, APP_BUILD_NUMBER
 
 ctk.set_appearance_mode("light")
 ctk.set_default_color_theme(os.path.join(os.path.dirname(__file__), "purple_theme.json"))
@@ -199,6 +199,7 @@ class App(ctk.CTk):
         menubar.add_cascade(label="File", menu=file_menu)
 
         help_menu = tk.Menu(menubar, tearoff=0)
+        help_menu.add_command(label="What's New", command=self._show_whats_new)
         help_menu.add_command(label="About", command=self._show_about)
         menubar.add_cascade(label="Help", menu=help_menu)
         self.configure(menu=menubar)
@@ -207,7 +208,7 @@ class App(ctk.CTk):
         footer = ctk.CTkFrame(self, height=25, fg_color=CLR_BG_SEC, corner_radius=0)
         footer.pack(fill="x", side="bottom")
         footer.pack_propagate(False)
-        ctk.CTkLabel(footer, text=f"{APP_NAME} v{APP_VERSION}",
+        ctk.CTkLabel(footer, text=f"{APP_NAME} v{APP_VERSION} ({APP_BUILD_NUMBER})",
                       font=FONT_CAPTION, text_color="gray40"
                       ).pack(side="left", padx=10)
 
@@ -348,13 +349,6 @@ class App(ctk.CTk):
                        hover_color=CLR_SECONDARY,
                        command=self._save_settings).pack(side="left", padx=10)
 
-        # About section
-        about_frame = ctk.CTkFrame(tab, fg_color="transparent")
-        about_frame.pack(fill="x", padx=20, pady=(10, 10), side="bottom")
-        ctk.CTkLabel(about_frame,
-                      text=f"{APP_NAME}  v{APP_VERSION}  |  Build: {APP_BUILD_DATE}",
-                      text_color="gray50", font=FONT_BODY).pack(anchor="w")
-
     def _save_settings(self):
         self.config.consol_db = ConsolDBConfig(
             dcf_path=self.consol_dcf_var.get(),
@@ -400,9 +394,12 @@ class App(ctk.CTk):
                 ds = app.DBManager.NewDataSet(
                     "SELECT FIRST 1 COMPANYNAME FROM SY_PROFILE"
                 )
-                company = ""
-                if ds.RecordCount > 0:
-                    company = ds.FindField("COMPANYNAME").AsString
+                try:
+                    company = ""
+                    if ds.RecordCount > 0:
+                        company = ds.FindField("COMPANYNAME").AsString
+                finally:
+                    ds.Close()
                 app.Logout()
                 msg = f"Connected successfully!\n\nDatabase: {db}"
                 if company:
@@ -1873,7 +1870,6 @@ class App(ctk.CTk):
 
     def _init_default_dates(self):
         """Set default date values: Date From = earliest last_synced, Date To = today."""
-        from datetime import datetime
         # Date To = today
         self.date_to_var.set(date.today().strftime("%d/%m/%Y"))
 
@@ -2075,7 +2071,6 @@ class App(ctk.CTk):
             messagebox.showinfo("Export Log", "No log content to export.")
             return
 
-        from datetime import datetime
         default_name = f"sync_log_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
         path = filedialog.asksaveasfilename(
             defaultextension=".txt",
@@ -2092,18 +2087,42 @@ class App(ctk.CTk):
             messagebox.showerror("Export Failed", str(e))
 
     # ------------------------------------------------------------------
-    # About dialog
+    # About / What's New
     # ------------------------------------------------------------------
     def _show_about(self):
         """Show About dialog with version info."""
         messagebox.showinfo(
             "About",
             f"{APP_NAME}\n"
-            f"Version: {APP_VERSION}\n"
-            f"Build Date: {APP_BUILD_DATE}\n\n"
+            f"Version: {APP_VERSION} (Build {APP_BUILD_NUMBER})\n\n"
             f"SQL Account Consolidation Sync Tool\n"
             f"Powered by SQL Account SDK"
         )
+
+    def _show_whats_new(self):
+        """Show What's New dialog with changelog."""
+        changelog_path = os.path.join(os.path.dirname(__file__), "CHANGELOG.md")
+        try:
+            with open(changelog_path, "r", encoding="utf-8") as f:
+                content = f.read()
+        except FileNotFoundError:
+            content = "No changelog available."
+
+        dialog = ctk.CTkToplevel(self)
+        dialog.title(f"What's New — {APP_NAME}")
+        dialog.geometry("520x420")
+        dialog.resizable(True, True)
+        dialog.transient(self)
+        dialog.grab_set()
+
+        textbox = ctk.CTkTextbox(dialog, font=FONT_CODE, wrap="word")
+        textbox.pack(fill="both", expand=True, padx=10, pady=10)
+        textbox.insert("1.0", content)
+        textbox.configure(state="disabled")
+
+        ctk.CTkButton(dialog, text="Close", fg_color=CLR_PRIMARY,
+                       hover_color=CLR_SECONDARY,
+                       command=dialog.destroy).pack(pady=(0, 10))
 
     # ------------------------------------------------------------------
     # Preview
@@ -2177,6 +2196,7 @@ class App(ctk.CTk):
                 self.after(0, lambda: self._set_syncing(False))
                 self.after(0, lambda: self.progress_label.configure(text="Preview complete"))
             finally:
+                logger.close()
                 pythoncom.CoUninitialize()
 
         self._sync_thread = threading.Thread(target=_preview_thread, daemon=True)
@@ -2229,6 +2249,8 @@ class App(ctk.CTk):
                 logger.info(f"Starting {mode_label}...")
 
                 self.sync_engine = SyncEngine(self.config, logger, self._progress_callback)
+                import time as _time
+                sync_start = _time.time()
                 results = self.sync_engine.sync(
                     entities, modules,
                     date_from=self._parse_date(self.date_from_var.get()),
@@ -2236,6 +2258,7 @@ class App(ctk.CTk):
                     sync_customers=self.sync_cust_var.get(),
                     purge_resync=is_purge,
                 )
+                total_duration = _format_duration(_time.time() - sync_start)
 
                 # Display results summary
                 logger.info("=" * 50)
@@ -2255,10 +2278,13 @@ class App(ctk.CTk):
                         for err in r.errors:
                             logger.error(f"  Error: {err}")
 
+                logger.info(f"Total sync duration: {total_duration}")
+
                 self.after(0, lambda: self._set_syncing(False))
                 self.after(0, lambda: self.progress_label.configure(text="Sync complete"))
                 self.after(0, lambda: self._refresh_entity_list())
             finally:
+                logger.close()
                 pythoncom.CoUninitialize()
 
         self._sync_thread = threading.Thread(target=_sync_thread, daemon=True)

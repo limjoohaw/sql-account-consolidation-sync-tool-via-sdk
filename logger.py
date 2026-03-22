@@ -41,15 +41,17 @@ class SyncLogger:
         # Ensure log directory exists
         os.makedirs(LOG_DIR, exist_ok=True)
 
-        # File logger
-        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        # File logger — use microseconds to avoid timestamp collisions
+        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S_%f")
         log_file = os.path.join(LOG_DIR, f"sync_{timestamp}.log")
 
         self._file_logger = logging.getLogger(f"sync_{timestamp}")
         self._file_logger.setLevel(logging.DEBUG)
-        handler = logging.FileHandler(log_file, encoding="utf-8")
-        handler.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(message)s"))
-        self._file_logger.addHandler(handler)
+        # Clear any existing handlers (getLogger caches by name)
+        self._file_logger.handlers.clear()
+        self._handler = logging.FileHandler(log_file, encoding="utf-8")
+        self._handler.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(message)s"))
+        self._file_logger.addHandler(self._handler)
 
     def info(self, message: str):
         self._log("INFO", message)
@@ -80,3 +82,10 @@ class SyncLogger:
 
     def get_entries(self) -> list:
         return list(self._entries)
+
+    def close(self):
+        """Close file handler to release log file lock."""
+        if self._handler:
+            self._handler.close()
+            self._file_logger.removeHandler(self._handler)
+            self._handler = None

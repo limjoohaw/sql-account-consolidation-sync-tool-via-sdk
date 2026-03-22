@@ -14,9 +14,19 @@ Project tracking for **SQL Consol Sync** (`SQLAccConsolSync.exe`) — SQL Accoun
   - Design or source an icon for the tool (window icon + taskbar + .exe icon)
   - Apply via `self.iconbitmap()` or `self.wm_iconphoto()` in CustomTkinter
 
-- [ ] **Full user manual guide**
+- [x] **Full user manual guide**
   - Create `USER_GUIDE.md` covering: installation, configuration, first-time setup, recurring sync workflow, Purge & Re-sync, troubleshooting
   - Include screenshots where helpful
+
+- [ ] **User guide screenshots**
+  - Capture and save to `docs/images/`:
+  - [ ] `settings-tab.png` — Settings tab with consol DB connection fields
+  - [ ] `entity-manager-tab.png` — Entity Manager tab with entity list
+  - [ ] `add-entity-dialog.png` — Add Entity dialog with fields filled in
+  - [ ] `category-mapping-tab.png` — Category Mapping tab with customer list and category dropdowns
+  - [ ] `sync-dashboard-tab.png` — Sync Dashboard with entities, modules, date range, and mode selection
+  - [ ] `purge-re-sync-preview.png` — Purge & Re-sync comparison preview (changed/new/deleted)
+  - [ ] `sync-log-output.png` — Sync log panel showing progress and results
 
 - [ ] **Compile to .exe**
   - Use **PyInstaller** (v6.x+) to compile to standalone Windows executable

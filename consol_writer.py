@@ -31,15 +31,18 @@ def fetch_company_categories(consol_config: ConsolDBConfig, logger: SyncLogger =
             ds = app.DBManager.NewDataSet(
                 "SELECT CODE, DESCRIPTION FROM COMPANYCATEGORY ORDER BY CODE"
             )
-            categories = []
-            ds.First()
-            while not ds.Eof:
-                categories.append({
-                    "code": (ds.FindField("CODE").AsString or "").strip(),
-                    "description": (ds.FindField("DESCRIPTION").AsString or "").strip(),
-                })
-                ds.Next()
-            return categories
+            try:
+                categories = []
+                ds.First()
+                while not ds.Eof:
+                    categories.append({
+                        "code": (ds.FindField("CODE").AsString or "").strip(),
+                        "description": (ds.FindField("DESCRIPTION").AsString or "").strip(),
+                    })
+                    ds.Next()
+                return categories
+            finally:
+                ds.Close()
     except Exception as e:
         if logger:
             logger.warning(f"Could not fetch Company Categories: {e}")
@@ -67,6 +70,7 @@ class ConsolWriter:
         """
         if self._conversion_date is not None:
             return self._conversion_date
+        ds = None
         try:
             ds = self.app.DBManager.NewDataSet(
                 "SELECT RVALUE FROM SY_REGISTRY "
@@ -85,6 +89,12 @@ class ConsolWriter:
             if self.logger:
                 self.logger.warning(f"Could not read SystemConversionDate: {e}")
             self._conversion_date = datetime.date.min
+        finally:
+            if ds:
+                try:
+                    ds.Close()
+                except Exception:
+                    pass
         return self._conversion_date
 
     def _is_before_conversion_date(self, doc_date_str) -> bool:
@@ -112,6 +122,7 @@ class ConsolWriter:
         """Get default GL account from consol DB SY_REGISTRY."""
         if registry_name in self._default_accounts:
             return self._default_accounts[registry_name]
+        ds = None
         try:
             ds = self.app.DBManager.NewDataSet(
                 f"SELECT RVALUE FROM SY_REGISTRY WHERE RNAME='{_sanitize_sql_str(registry_name)}'"
@@ -127,11 +138,18 @@ class ConsolWriter:
                 self.logger.warning(f"Could not read {registry_name} from SY_REGISTRY: {e}")
             self._default_accounts[registry_name] = ""
             return ""
+        finally:
+            if ds:
+                try:
+                    ds.Close()
+                except Exception:
+                    pass
 
     def _get_default_payment_method(self) -> str:
         """Get first BANK payment method from consol DB PMMETHOD."""
         if "PaymentMethod" in self._default_accounts:
             return self._default_accounts["PaymentMethod"]
+        ds = None
         try:
             ds = self.app.DBManager.NewDataSet(
                 "SELECT FIRST 1 CODE FROM PMMETHOD WHERE JOURNAL='BANK'"
@@ -147,6 +165,12 @@ class ConsolWriter:
                 self.logger.warning(f"Could not read PMMETHOD from consol DB: {e}")
             self._default_accounts["PaymentMethod"] = ""
             return ""
+        finally:
+            if ds:
+                try:
+                    ds.Close()
+                except Exception:
+                    pass
 
     def get_active_tax_codes(self) -> set:
         """Get all active tax codes from consol DB TAX table.
@@ -156,6 +180,7 @@ class ConsolWriter:
         """
         if "_tax_codes" in self._default_accounts:
             return self._default_accounts["_tax_codes"]
+        ds = None
         try:
             ds = self.app.DBManager.NewDataSet(
                 "SELECT CODE FROM TAX WHERE ISACTIVE=TRUE ORDER BY CODE"
@@ -176,6 +201,12 @@ class ConsolWriter:
                 self.logger.warning(f"Could not read TAX table from consol DB: {e}")
             self._default_accounts["_tax_codes"] = set()
             return set()
+        finally:
+            if ds:
+                try:
+                    ds.Close()
+                except Exception:
+                    pass
 
     def _account_for_doc_type(self, doc_type: str) -> str:
         """Get the default GL account for a given AR document type."""
@@ -192,6 +223,7 @@ class ConsolWriter:
         """Get all ISOCODEs present in consol DB CURRENCY table."""
         if "_currencies" in self._default_accounts:
             return self._default_accounts["_currencies"]
+        ds = None
         try:
             ds = self.app.DBManager.NewDataSet(
                 "SELECT ISOCODE FROM CURRENCY ORDER BY CODE"
@@ -212,6 +244,12 @@ class ConsolWriter:
                 self.logger.warning(f"Could not read CURRENCY table from consol DB: {e}")
             self._default_accounts["_currencies"] = set()
             return set()
+        finally:
+            if ds:
+                try:
+                    ds.Close()
+                except Exception:
+                    pass
 
     def create_currency(self, isocode: str, description: str, symbol: str) -> bool:
         """Create a new currency in consol DB via SDK BizObject."""
@@ -257,6 +295,7 @@ class ConsolWriter:
         """Get all GL account codes from consol DB."""
         if "_gl_codes" in self._default_accounts:
             return self._default_accounts["_gl_codes"]
+        ds = None
         try:
             ds = self.app.DBManager.NewDataSet(
                 "SELECT CODE FROM GL_ACC ORDER BY CODE"
@@ -277,6 +316,12 @@ class ConsolWriter:
                 self.logger.warning(f"Could not read GL_ACC from consol DB: {e}")
             self._default_accounts["_gl_codes"] = set()
             return set()
+        finally:
+            if ds:
+                try:
+                    ds.Close()
+                except Exception:
+                    pass
 
     def _get_ca_parent_dockey(self):
         """Get the DocKey of GL_ACC where CODE='_CA_' (Current Asset parent)."""
@@ -407,6 +452,7 @@ class ConsolWriter:
             sql += f" AND DOCDATE <= '{_sanitize_sql_str(date_to)}'"
         sql += " ORDER BY DOCNO"
 
+        ds = None
         try:
             ds = self.app.DBManager.NewDataSet(sql)
             results = []
@@ -427,6 +473,12 @@ class ConsolWriter:
             if self.logger:
                 self.logger.warning(f"Could not query {table} for prefix '{prefix}': {e}")
             return []
+        finally:
+            if ds:
+                try:
+                    ds.Close()
+                except Exception:
+                    pass
 
     def delete_document(self, doc_type: str, doc_no: str) -> bool:
         """Delete a document from consol DB via SDK BizObject.
@@ -624,7 +676,7 @@ class ConsolWriter:
                 main_ds.FindField("LOCALDOCAMT").AsFloat = data.get("local_amount", data.get("amount", 0))
 
             # Detail lines — SDK field order: SEQ, ACCOUNT, DESCRIPTION,
-            # AMOUNT, TAX, TAXRATE, TAXINCLUSIVE, TAXAMT,
+            # TAX, TAXRATE, TAXINCLUSIVE, AMOUNT, TAXAMT,
             # EXEMPTED_TAXRATE, EXEMPTED_TAXAMT
             default_account = self._account_for_doc_type(doc_type)
             suffix = ""
@@ -643,8 +695,9 @@ class ConsolWriter:
                     detail_ds.FindField("ACCOUNT").AsString = default_account
                 if data.get("description"):
                     detail_ds.FindField("DESCRIPTION").AsString = data["description"]
-                detail_ds.FindField("AMOUNT").AsFloat = data["amount"]
+                # SDK field order: TAX/TAXRATE/TAXINCLUSIVE must be set BEFORE AMOUNT
                 detail_ds.FindField("TAXINCLUSIVE").value = False
+                detail_ds.FindField("AMOUNT").AsFloat = data["amount"]
                 detail_ds.FindField("TAXAMT").AsFloat = 0
                 detail_ds.FindField("EXEMPTED_TAXAMT").AsFloat = 0
                 detail_ds.Post()
@@ -667,12 +720,20 @@ class ConsolWriter:
                         detail_ds.FindField("TAX").AsString = dtl.tax
                     if dtl.tax_rate:
                         detail_ds.FindField("TAXRATE").AsString = dtl.tax_rate
-                    detail_ds.FindField("TAXINCLUSIVE").value = (dtl.tax_inclusive == "T")
+                    # Always set TaxInclusive=False first so SDK doesn't
+                    # auto-recalculate Amount when TaxInclusive is True
+                    detail_ds.FindField("TAXINCLUSIVE").value = False
                     detail_ds.FindField("AMOUNT").AsFloat = dtl.amount
                     detail_ds.FindField("TAXAMT").AsFloat = dtl.tax_amt
                     if dtl.exempted_tax_rate:
                         detail_ds.FindField("EXEMPTED_TAXRATE").AsString = dtl.exempted_tax_rate
                     detail_ds.FindField("EXEMPTED_TAXAMT").AsFloat = dtl.exempted_tax_amt
+                    # For tax-inclusive lines, flip flag inside DisableControls
+                    # to prevent SDK from recalculating amounts
+                    if dtl.tax_inclusive == "T":
+                        detail_ds.DisableControls()
+                        detail_ds.FindField("TAXINCLUSIVE").value = True
+                        detail_ds.EnableControls()
                     detail_ds.Post()
 
             # Knock-off for CN (CN knocks off IV/DN)

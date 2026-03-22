@@ -1,4 +1,4 @@
-pywin32>=306
-customtkinter>=5.2.0
-fdb>=2.0.2
-Pillow>=10.0.0
+pywin32>=306,<400
+customtkinter>=5.2.0,<6.0
+fdb>=2.0.2,<3.0
+Pillow>=10.0.0,<12.0
