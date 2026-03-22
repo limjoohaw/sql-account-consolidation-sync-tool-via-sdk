@@ -36,5 +36,3 @@ Or run the compiled version: `C:\eStream\Utilities\SQLAccConsolSync\SQLAccConsol
 ```
 Source DBs (Firebird) → source_reader.py → transformer.py → consol_writer.py → Consolidation DB
 ```
-
-See [CLAUDE.md](CLAUDE.md) for detailed architecture documentation.
