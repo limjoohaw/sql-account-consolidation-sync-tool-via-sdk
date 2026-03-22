@@ -1,12 +1,18 @@
 """Configuration manager for entity DB connections and app settings."""
 
 import os
+import sys
 import json
 import threading
 from dataclasses import dataclass, field, asdict
 from typing import Optional
 
-CONFIG_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.json")
+# In PyInstaller bundle, config.json lives next to the .exe (not inside _internal/)
+if getattr(sys, 'frozen', False):
+    _APP_DIR = os.path.dirname(sys.executable)
+else:
+    _APP_DIR = os.path.dirname(os.path.abspath(__file__))
+CONFIG_FILE = os.path.join(_APP_DIR, "config.json")
 _config_lock = threading.Lock()
 
 

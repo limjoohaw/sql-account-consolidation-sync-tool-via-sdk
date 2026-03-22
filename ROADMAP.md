@@ -28,20 +28,12 @@ Project tracking for **SQL Consol Sync** (`SQLAccConsolSync.exe`) — SQL Accoun
   - [ ] `purge-re-sync-preview.png` — Purge & Re-sync comparison preview (changed/new/deleted)
   - [ ] `sync-log-output.png` — Sync log panel showing progress and results
 
-- [ ] **Compile to .exe**
-  - Use **PyInstaller** (v6.x+) to compile to standalone Windows executable
-  - .exe name: `SQLAccConsolSync.exe`
-  - Shortcut name: `SQL Consol Sync`
-  - Default install location: `C:\eStream\Utilities\SQLAccConsolSync\`
-  - Must bundle: Python runtime, fdb, pywin32, customtkinter, all project files
-  - **Build method:** Use `--onedir` mode (not `--onefile`) — faster startup, easier to debug/update
-  - **Build files to create:** `SQLAccConsolSync.spec` (build config) + `build.bat` (one-click build script)
-  - **Spec file** controls all build settings (hidden imports, data files, icon, version info) — version it in source control
-  - **Version stamping:** PyInstaller can read `version.py` to embed version info in .exe properties
-  - **Quick build command:** `pyinstaller SQLAccConsolSync.spec`
-  - **First-time setup:** `pip install pyinstaller` then create .spec via `pyinstaller --onedir --windowed --name "SQLAccConsolSync" --icon=icon.ico main.py`
-  - **Testing:** Test on clean Windows machine without Python installed
-  - **Future:** Consider code signing certificate to avoid Windows SmartScreen warnings
+- [x] **Compile to .exe**
+  - PyInstaller 6.x+ `--onedir --windowed` mode
+  - .exe name: `SQLAccConsolSync.exe`, install to `C:\eStream\Utilities\SQLAccConsolSync\`
+  - Bundles: Python runtime, fdb, pywin32, customtkinter, purple_theme.json, icon.ico, CHANGELOG.md
+  - `config.json` and `logs/` created next to .exe at runtime (not inside `_internal/`)
+  - Build: `pyinstaller SQLAccConsolSync.spec` (see README for full instructions)
 
 ### Medium Priority
 

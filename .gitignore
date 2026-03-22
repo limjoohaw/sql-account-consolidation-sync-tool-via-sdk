@@ -16,7 +16,9 @@ config.json
 # PyInstaller build output
 build/
 dist/
-*.spec
+
+# Inno Setup installer output
+installer_output/
 
 # Windows
 Thumbs.db

@@ -3,9 +3,14 @@
 import logging
 import datetime
 import os
+import sys
 from typing import Optional
 
-LOG_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logs")
+# In PyInstaller bundle, logs/ lives next to the .exe (not inside _internal/)
+if getattr(sys, 'frozen', False):
+    LOG_DIR = os.path.join(os.path.dirname(sys.executable), "logs")
+else:
+    LOG_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logs")
 
 # Common COM/SDK error translations
 ERROR_TRANSLATIONS = {
