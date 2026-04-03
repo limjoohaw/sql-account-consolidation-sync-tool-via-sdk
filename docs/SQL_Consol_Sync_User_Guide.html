@@ -1,0 +1,853 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SQL Consol Sync - User Guide</title>
+<style>
+  body { font-family: -apple-system, Arial, Helvetica, sans-serif; font-size: 14px; line-height: 1.7; color: #333; max-width: 900px; margin: 0 auto; padding: 20px 40px; }
+  h1 { color: #5B4FC7; font-size: 28px; border-bottom: 2px solid #5B4FC7; padding-bottom: 8px; margin-top: 40px; }
+  h2 { color: #5B4FC7; font-size: 22px; border-bottom: 1px solid #ddd; padding-bottom: 6px; margin-top: 36px; }
+  h3 { color: #333; font-size: 18px; margin-top: 28px; }
+  h4 { color: #555; font-size: 15px; margin-top: 20px; }
+  table { border-collapse: collapse; width: 100%; margin: 16px 0; font-size: 13px; }
+  th { background: #E8E4F8; color: #333; font-weight: bold; padding: 8px 12px; border: 1px solid #ccc; text-align: left; }
+  td { padding: 6px 12px; border: 1px solid #ddd; vertical-align: top; }
+  tr:nth-child(even) td { background: #f9f7ff; }
+  code { background: #f4f4f4; padding: 2px 6px; border-radius: 3px; font-family: Consolas, monospace; font-size: 13px; }
+  pre { background: #f4f4f4; padding: 16px; border-radius: 6px; overflow-x: auto; }
+  pre code { background: none; padding: 0; }
+  strong { color: #222; }
+  a { color: #5B4FC7; }
+  .title-block { text-align: center; margin: 40px 0 50px; }
+  .title-block h1 { border: none; font-size: 32px; margin-bottom: 4px; }
+  .title-block .subtitle { color: #666; font-size: 16px; }
+  .title-block .version { color: #999; font-size: 14px; }
+</style>
+</head>
+<body>
+<div class="title-block">
+  <h1>SQL Consol Sync</h1>
+  <p class="subtitle">User Guide</p>
+  <p class="version">Version 1.0.0</p>
+</div>
+<p><strong>SQL Consol Sync</strong> is a desktop tool that extracts AR (Accounts Receivable) transactions from multiple source SQL Account databases and upserts them into a single consolidation database for unified <strong>Statement of Account</strong> group by company category reporting.</p>
+<p><strong>Key features:</strong></p>
+<ul>
+<li>Sync AR documents: Invoice (IV), Debit Note (DN), Credit Note (CN), Contra (CT), Payment (PM), Refund (CF)</li>
+<li>Auto-create currencies, GL accounts, and payment methods in consolidation DB</li>
+<li>Multi-currency support with ISOCODE standardization</li>
+<li>Customer master data sync with Company Category mapping</li>
+<li>Skip existing (incremental) or Purge &amp; Re-sync modes</li>
+<li>Opening balance support (SystemConversionDate handling)</li>
+<li>SST/GST tax code validation</li>
+<li>Preview / dry-run before sync</li>
+<li>Date range filtering</li>
+</ul>
+<h2>Requirement</h2>
+<ul>
+<li>Windows 10 or above (64-bit preferable)</li>
+<li>Python 3.11+ (for source installation)</li>
+<li>Firebird Server 3.0+</li>
+<li>SQL Account Version 5.2025.1045.882+</li>
+<li>SQL Account SDK COM registered (installed with SQL Accounting)</li>
+</ul>
+<div style="background:#fff8e1;border-left:4px solid #ff9800;padding:12px 16px;margin:16px 0;border-radius:4px;"><strong style="color:#ff9800">Caution</strong><p>Source databases and the consolidation database must be on the <strong>same SQL Account version</strong>. Mismatched versions may cause SDK errors during sync.</p></div>
+
+<h2>Database Prerequisites</h2>
+<ul>
+<li>If any source database has SST/GST enabled, the consolidation database must also have SST/GST started</li>
+<li>Consolidation database must have all required <strong>tax codes and rates</strong> pre-configured (e.g. <code>6%;8%</code> for SST/GST) — the sync validates tax code existence but does not auto-create them</li>
+<li>Supports both <strong>local FDB files</strong> and <strong>SQL Connect Public Cloud FDB</strong> (remote Firebird)</li>
+</ul>
+<div style="background:#e7f2fa;border-left:4px solid #2196F3;padding:12px 16px;margin:16px 0;border-radius:4px;"><strong style="color:#2196F3">Cloud Database Access</strong><p>For SQL Connect Public Cloud access, request connection details from your service dealer:
+- Company Name, Server (e.g. <code>fb5-pos.sql.com.my</code>), Username, Password, Database name
+- Example: Server=<code>fb5-pos.sql.com.my</code>, Database=<code>abc-trading-sdn-bhd-demo-cloud</code></p></div>
+
+<h2>Installation</h2>
+<ol>
+<li>
+<p>Install on the SQL Account server PC (where Firebird and SQL Accounting are installed)</p>
+</li>
+<li>
+<p>Download and extract the program files, or install <code>SQLAccConsolSync.exe</code> to <code>C:\eStream\Utilities\SQLAccConsolSync\</code></p>
+</li>
+<li>
+<p>For source installation:
+    <code>pip install -r requirements.txt
+    python main.py</code></p>
+</li>
+</ol>
+<h2>One-Time Setup</h2>
+<h3>Configure Consolidation Database</h3>
+<ol>
+<li>
+<p>Open the <strong>Settings</strong> tab</p>
+</li>
+<li>
+<p>Fill in the consolidation database connection details:</p>
+<ul>
+<li><strong>DCF Path</strong> — Path to <code>Default.DCF</code> file (e.g. <code>C:\eStream\SQLAcc\Share\Default.DCF</code>)</li>
+<li><strong>DB Name</strong> — Database name as registered in SQL Accounting</li>
+<li><strong>Username / Password</strong> — SQL Account login credentials (default: <code>ADMIN</code> / <code>ADMIN</code>)</li>
+<li><strong>Firebird Host</strong> — Firebird server address (default: <code>localhost</code>)</li>
+<li><strong>Firebird DB Path</strong> — Full path to the consolidation <code>.FDB</code> file</li>
+<li><strong>Firebird User / Password</strong> — Firebird login (default: <code>SYSDBA</code> / <code>masterkey</code>)</li>
+</ul>
+</li>
+<li>
+<p>Click <strong>Test Connection</strong> to verify both SDK and Firebird connections</p>
+</li>
+<li>
+<p>Click <strong>Save Settings</strong></p>
+</li>
+</ol>
+<h3>Add Source Entities</h3>
+<ol>
+<li>
+<p>Open the <strong>Entity Manager</strong> tab</p>
+</li>
+<li>
+<p>Click <strong>Add Entity</strong></p>
+</li>
+<li>
+<p>Fill in the source entity details:</p>
+<ul>
+<li><strong>Entity Name</strong> — Display name for this entity (e.g. <code>ABC Trading Sdn Bhd</code>)</li>
+<li><strong>Customer Code Prefix</strong> — Prefix to strip from source customer codes (optional)</li>
+<li><strong>Firebird DB Path</strong> — Full path to the source entity's <code>.FDB</code> file</li>
+<li><strong>Firebird Host</strong> — Firebird server address (default: <code>localhost</code>)</li>
+<li>
+<p><strong>Firebird User / Password</strong> — Firebird login (default: <code>SYSDBA</code> / <code>masterkey</code>)</p>
+</li>
+<li>
+<p>Click <strong>Save</strong> — the entity will appear in the Entity Manager grid</p>
+</li>
+</ul>
+</li>
+<li>
+<p>Repeat for each source entity</p>
+</li>
+</ol>
+<div style="background:#e7f2fa;border-left:4px solid #2196F3;padding:12px 16px;margin:16px 0;border-radius:4px;"><strong style="color:#2196F3">Entity Prefix</strong><p>The entity prefix (used to prefix document numbers in the consolidation DB) is automatically read from <code>SY_PROFILE.ALIAS</code> in the source database at sync time. Ensure each source entity has a unique <strong>Company Alias</strong> set in SQL Accounting.</p></div>
+
+<h3>Assign Company Categories</h3>
+<ol>
+<li>
+<p>Open the <strong>Category Mapping</strong> tab</p>
+</li>
+<li>
+<p>Select an entity from the dropdown and click <strong>Load Customers</strong></p>
+</li>
+<li>
+<p>For each customer, assign a <strong>Company Category</strong> from the dropdown</p>
+<ul>
+<li>Only customers with a category assigned will be synced</li>
+<li>Unmapped customers are silently skipped during sync</li>
+</ul>
+</li>
+<li>
+<p>Use the <strong>Check All</strong> / <strong>Uncheck All</strong> buttons to batch-select customers</p>
+</li>
+<li>
+<p>Click <strong>Save Mapping</strong> to persist the category assignments</p>
+</li>
+</ol>
+<div style="background:#fff3e0;border-left:4px solid #f44336;padding:12px 16px;margin:16px 0;border-radius:4px;"><strong style="color:#f44336">Important</strong><p>Company Categories must already exist in the consolidation database. Create them in SQL Account under <strong>Tools &gt; Maintain Company Category</strong> before assigning mappings.</p></div>
+
+<h2>Recurring Sync</h2>
+<h3>Sync Dashboard</h3>
+<ol>
+<li>
+<p>Open the <strong>Sync</strong> tab (default tab)</p>
+</li>
+<li>
+<p>Enable the entities you want to sync using the checkboxes in the entity list</p>
+</li>
+<li>
+<p>Select the modules to sync:</p>
+<ul>
+<li><strong>Master Data</strong> — Customer master records</li>
+<li><strong>Transaction Data</strong> — AR documents (IV, DN, CN, CT, PM, CF)</li>
+</ul>
+</li>
+<li>
+<p>Set the <strong>date range filter</strong> (optional):</p>
+<ul>
+<li><strong>Date From</strong> — defaults to the earliest <code>last_synced</code> timestamp across selected entities</li>
+<li><strong>Date To</strong> — defaults to today</li>
+</ul>
+</li>
+<li>
+<p>Choose <strong>sync mode</strong>:</p>
+<ul>
+<li><strong>Skip existing</strong> (default) — only imports new documents; skips documents that already exist in the consolidation DB</li>
+<li><strong>Purge &amp; Re-sync</strong> — deletes all documents for the selected entities within the date range, then re-imports fresh</li>
+</ul>
+</li>
+<li>
+<p>Click <strong>Load Preview</strong> to see record counts (dry run, no data written)</p>
+</li>
+<li>
+<p>Click <strong>Start Sync</strong> to begin the actual sync</p>
+</li>
+<li>
+<p>Monitor progress in the log panel — duration is shown per module and total</p>
+<p><div style="background:#fff8e1;border-left:4px solid #ff9800;padding:12px 16px;margin:16px 0;border-radius:4px;"><strong style="color:#ff9800">Caution</strong><p>Always <strong>back up the consolidation database</strong> before running a sync, especially in Purge &amp; Re-sync mode.</p></div></p>
+</li>
+</ol>
+<h3>Import Order</h3>
+<p>The sync enforces this import order to respect document dependencies:</p>
+<p><strong>Import:</strong> IV → DN → CN → CT → PM → CF</p>
+<p><strong>Purge (reverse):</strong> CF → PM → CN → CT → DN → IV</p>
+<h3>Purge &amp; Re-sync Mode</h3>
+<p>Use this mode when:
+- Source data has been corrected or modified
+- You need to re-import documents with updated amounts or details
+- Documents were imported incorrectly</p>
+<p>How it works:
+- Deletes existing documents in <strong>reverse order</strong> (CF → PM → CN → CT → DN → IV)
+- SQL Account automatically un-knock-offs related documents on delete
+- Re-imports all documents fresh in forward order
+- A comparison preview shows changed, new, and deleted documents before proceeding</p>
+<div style="background:#fff3e0;border-left:4px solid #f44336;padding:12px 16px;margin:16px 0;border-radius:4px;"><strong style="color:#f44336">Purge Confirmation</strong><p>The purge confirmation dialog uses a <strong>reverse question</strong>: "Do you want to CANCEL the operation?" — clicking <strong>Yes</strong> cancels (safe default), clicking <strong>No</strong> proceeds with the purge.</p></div>
+
+<h2>Data Transformation Reference</h2>
+<p>The sync reads data from source databases via Firebird, transforms it to fit the consolidation database, and writes via the SQL Account SDK:</p>
+<pre><code>Source DBs (Firebird read) → Transformer → Consolidation DB (SDK write)
+</code></pre>
+<h3>Overview</h3>
+<table>
+<thead>
+<tr>
+<th>Module</th>
+<th>Type</th>
+<th>Auto-Created?</th>
+<th>Key Transformation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Company Category</td>
+<td>Master</td>
+<td>No (must pre-exist in consol DB)</td>
+<td>From Category Mapping config</td>
+</tr>
+<tr>
+<td>Customer</td>
+<td>Master</td>
+<td>Upsert (create or update)</td>
+<td>Code prefix swap, category reassignment</td>
+</tr>
+<tr>
+<td>Currency</td>
+<td>Master</td>
+<td>Auto-create if missing</td>
+<td>Standardized to ISO code</td>
+</tr>
+<tr>
+<td>GL Account</td>
+<td>Master</td>
+<td>Auto-create if missing</td>
+<td>JOURNAL-ISOCODE format (e.g. <code>BANK-USD</code>)</td>
+</tr>
+<tr>
+<td>Payment Method</td>
+<td>Master</td>
+<td>Auto-created by GL Account</td>
+<td>Linked to GL Account with currency</td>
+</tr>
+<tr>
+<td>Invoice (IV)</td>
+<td>Transaction</td>
+<td>Insert only (skip if exists)</td>
+<td>Doc no prefixed, GL account replaced</td>
+</tr>
+<tr>
+<td>Debit Note (DN)</td>
+<td>Transaction</td>
+<td>Insert only (skip if exists)</td>
+<td>Same as Invoice</td>
+</tr>
+<tr>
+<td>Credit Note (CN)</td>
+<td>Transaction</td>
+<td>Insert only (skip if exists)</td>
+<td>Same as Invoice + knock-offs</td>
+</tr>
+<tr>
+<td>Contra (CT)</td>
+<td>Transaction</td>
+<td>Insert only (skip if exists)</td>
+<td>Header + knock-offs only</td>
+</tr>
+<tr>
+<td>Payment (PM)</td>
+<td>Transaction</td>
+<td>Insert only (skip if exists)</td>
+<td>Payment method mapped + knock-offs</td>
+</tr>
+<tr>
+<td>Refund (CF)</td>
+<td>Transaction</td>
+<td>Insert only (skip if exists)</td>
+<td>Payment method mapped + knock-offs</td>
+</tr>
+</tbody>
+</table>
+<h3>Master Data</h3>
+<h4>Company Category</h4>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Source DB</th>
+<th>Transformation</th>
+<th>Consol DB</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Code</td>
+<td>Category Mapping config</td>
+<td>From user assignment in Category Mapping tab</td>
+<td><code>COMPANYCATEGORY.CODE</code></td>
+</tr>
+<tr>
+<td>Description</td>
+<td>Category Mapping config</td>
+<td>Same as Code</td>
+<td><code>COMPANYCATEGORY.DESCRIPTION</code></td>
+</tr>
+</tbody>
+</table>
+<div style="background:#e7f2fa;border-left:4px solid #2196F3;padding:12px 16px;margin:16px 0;border-radius:4px;"><strong style="color:#2196F3">Info</strong><p>Company Categories must already exist in the consolidation database. The sync creates them if missing based on Category Mapping assignments, but the categories should be pre-configured in SQL Account under <strong>Tools &gt; Maintain Company Category</strong>.</p></div>
+
+<h4>Customer</h4>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Source DB</th>
+<th>Transformation</th>
+<th>Consol DB</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Customer Code</td>
+<td><code>AR_CUSTOMER.CODE</code></td>
+<td>Strips source prefix (e.g. <code>300-</code>), prepends entity alias (e.g. <code>A1-</code>). Example: <code>300-A0001</code> → <code>A1-A0001</code>. Max 10 characters.</td>
+<td><code>AR_CUSTOMER.CODE</code></td>
+</tr>
+<tr>
+<td>Company Name</td>
+<td><code>AR_CUSTOMER.COMPANYNAME</code></td>
+<td>Passed through</td>
+<td><code>AR_CUSTOMER.COMPANYNAME</code></td>
+</tr>
+<tr>
+<td>Company Name 2</td>
+<td><code>SY_PROFILE.COMPANYNAME</code></td>
+<td>Set to the source entity's company name (identifies which entity the customer belongs to)</td>
+<td><code>AR_CUSTOMER.COMPANYNAME2</code></td>
+</tr>
+<tr>
+<td>Company Category</td>
+<td><code>AR_CUSTOMER.COMPANYCATEGORY</code></td>
+<td><strong>Replaced</strong> with the category assigned in the Category Mapping tab (looked up by original customer code)</td>
+<td><code>AR_CUSTOMER.COMPANYCATEGORY</code></td>
+</tr>
+<tr>
+<td>Currency</td>
+<td><code>AR_CUSTOMER.CURRENCYCODE</code></td>
+<td>Mapped from source currency code to ISO code (e.g. <code>aud</code> → <code>AUD</code>). Home currency (<code>----</code>) unchanged.</td>
+<td><code>AR_CUSTOMER.CURRENCYCODE</code></td>
+</tr>
+<tr>
+<td>Contact Person</td>
+<td><code>AR_CUSTOMERBRANCH.ATTENTION</code></td>
+<td>Passed through</td>
+<td><code>cdsBranch.ATTENTION</code></td>
+</tr>
+<tr>
+<td>Phone</td>
+<td><code>AR_CUSTOMERBRANCH.PHONE1</code></td>
+<td>Passed through</td>
+<td><code>cdsBranch.PHONE1</code></td>
+</tr>
+<tr>
+<td>Email</td>
+<td><code>AR_CUSTOMERBRANCH.EMAIL</code></td>
+<td>Passed through</td>
+<td><code>cdsBranch.EMAIL</code></td>
+</tr>
+<tr>
+<td>Address 1–4</td>
+<td><code>AR_CUSTOMERBRANCH.ADDRESS1–4</code></td>
+<td>Passed through</td>
+<td><code>cdsBranch.ADDRESS1–4</code></td>
+</tr>
+<tr>
+<td>Postcode</td>
+<td><code>AR_CUSTOMERBRANCH.POSTCODE</code></td>
+<td>Passed through</td>
+<td><code>cdsBranch.POSTCODE</code></td>
+</tr>
+</tbody>
+</table>
+<div style="background:#e7f2fa;border-left:4px solid #2196F3;padding:12px 16px;margin:16px 0;border-radius:4px;"><strong style="color:#2196F3">Create vs Update</strong><ul>
+<li><strong>New customer:</strong> All fields above are written, including billing branch details.</li>
+<li><strong>Existing customer:</strong> Only Company Name, Company Name 2, and Company Category are updated. Branch/billing details are <strong>not</strong> overwritten.</li>
+</ul></div>
+
+<h4>Currency</h4>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Source DB</th>
+<th>Transformation</th>
+<th>Consol DB</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Code</td>
+<td><code>CURRENCY.CODE</code></td>
+<td>Replaced with ISO code (e.g. source <code>aud</code> → consol <code>AUD</code>)</td>
+<td><code>CURRENCY.CODE</code></td>
+</tr>
+<tr>
+<td>Description</td>
+<td><code>CURRENCY.DESCRIPTION</code></td>
+<td>Replaced with ISO 4217 standard description</td>
+<td><code>CURRENCY.DESCRIPTION</code></td>
+</tr>
+<tr>
+<td>ISO Code</td>
+<td><code>CURRENCY.ISOCODE</code></td>
+<td>Passed through</td>
+<td><code>CURRENCY.ISOCODE</code></td>
+</tr>
+<tr>
+<td>Symbol</td>
+<td><code>CURRENCY.SYMBOL</code></td>
+<td>Replaced with ISO code</td>
+<td><code>CURRENCY.SYMBOL</code></td>
+</tr>
+</tbody>
+</table>
+<div style="background:#e7f2fa;border-left:4px solid #2196F3;padding:12px 16px;margin:16px 0;border-radius:4px;"><strong style="color:#2196F3">Info</strong><p>Home currency (<code>CODE = "----"</code>) is skipped — it already exists in every SQL Account database. Only foreign currencies are auto-created when missing.</p></div>
+
+<h4>GL Account &amp; Payment Method</h4>
+<p>GL accounts and payment methods are auto-created based on source payment methods. Each unique journal type + currency combination creates one GL account and one payment method.</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Source DB</th>
+<th>Transformation</th>
+<th>Consol DB</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>GL Code</td>
+<td><code>PMMETHOD.JOURNAL</code> + <code>CURRENCY.ISOCODE</code></td>
+<td>Combined as <code>JOURNAL-ISOCODE</code> (e.g. <code>BANK-USD</code>, <code>CASH-MYR</code>)</td>
+<td><code>GL_ACC.CODE</code></td>
+</tr>
+<tr>
+<td>Description</td>
+<td>(derived)</td>
+<td>Auto-generated from journal type and currency</td>
+<td><code>GL_ACC.DESCRIPTION</code></td>
+</tr>
+<tr>
+<td>Account Type</td>
+<td>(derived)</td>
+<td>Always <code>CA</code> (Current Asset)</td>
+<td><code>GL_ACC.ACCTYPE</code></td>
+</tr>
+<tr>
+<td>Special Type</td>
+<td><code>PMMETHOD.JOURNAL</code></td>
+<td><code>BANK</code> → <code>BA</code>, <code>CASH</code> → <code>CH</code></td>
+<td><code>GL_ACC.SPECIALACCTYPE</code></td>
+</tr>
+<tr>
+<td>PM Currency</td>
+<td><code>CURRENCY.ISOCODE</code></td>
+<td>Assigned to auto-created payment method. Home currency uses <code>----</code>.</td>
+<td><code>PMMETHOD.CURRENCYCODE</code></td>
+</tr>
+</tbody>
+</table>
+<div style="background:#e7f2fa;border-left:4px solid #2196F3;padding:12px 16px;margin:16px 0;border-radius:4px;"><strong style="color:#2196F3">Info</strong><p>Creating a GL Account with bank/cash type in SQL Account <strong>automatically creates a matching Payment Method</strong>. The sync then assigns the correct currency to that payment method.</p></div>
+
+<h3>Transaction Documents</h3>
+<h4>Invoice / Debit Note / Credit Note (IV, DN, CN)</h4>
+<p>These three document types share the same field structure with header + detail lines.</p>
+<p><strong>Header Fields:</strong></p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Source DB</th>
+<th>Transformation</th>
+<th>Consol DB</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Customer Code</td>
+<td><code>AR_IV.CODE</code></td>
+<td>Same as Customer Code transformation above</td>
+<td><code>MainDataSet.CODE</code></td>
+</tr>
+<tr>
+<td>Document No</td>
+<td><code>AR_IV.DOCNO</code></td>
+<td>Prepends entity alias (e.g. <code>INV-1001</code> → <code>A1-INV-1001</code>)</td>
+<td><code>MainDataSet.DOCNO</code></td>
+</tr>
+<tr>
+<td>Document Date</td>
+<td><code>AR_IV.DOCDATE</code></td>
+<td>Converted to <code>dd/mm/yyyy</code> format</td>
+<td><code>MainDataSet.DOCDATE</code></td>
+</tr>
+<tr>
+<td>Post Date</td>
+<td><code>AR_IV.POSTDATE</code></td>
+<td>Converted to <code>dd/mm/yyyy</code> format</td>
+<td><code>MainDataSet.POSTDATE</code></td>
+</tr>
+<tr>
+<td>Description</td>
+<td><code>AR_IV.DESCRIPTION</code></td>
+<td>Passed through</td>
+<td><code>MainDataSet.DESCRIPTION</code></td>
+</tr>
+<tr>
+<td>Currency</td>
+<td><code>AR_IV.CURRENCYCODE</code></td>
+<td>Mapped from source code to ISO code</td>
+<td><code>MainDataSet.CURRENCYCODE</code></td>
+</tr>
+<tr>
+<td>Currency Rate</td>
+<td><code>AR_IV.CURRENCYRATE</code></td>
+<td>Passed through</td>
+<td><code>MainDataSet.CURRENCYRATE</code></td>
+</tr>
+<tr>
+<td>Doc Amount</td>
+<td><code>AR_IV.DOCAMT</code></td>
+<td>Passed through (used for opening balance only)</td>
+<td><code>MainDataSet.DOCAMT</code></td>
+</tr>
+<tr>
+<td>Local Doc Amount</td>
+<td><code>AR_IV.LOCALDOCAMT</code></td>
+<td>Passed through (used for opening balance only)</td>
+<td><code>MainDataSet.LOCALDOCAMT</code></td>
+</tr>
+</tbody>
+</table>
+<p><strong>Detail Line Fields (per line item):</strong></p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Source DB</th>
+<th>Transformation</th>
+<th>Consol DB</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Sequence</td>
+<td><code>AR_IVDTL.SEQ</code></td>
+<td>Re-sequenced from 1</td>
+<td><code>cdsDocDetail.SEQ</code></td>
+</tr>
+<tr>
+<td>GL Account</td>
+<td><code>AR_IVDTL.ACCOUNT</code></td>
+<td><strong>Replaced</strong> with consol DB default GL account (IV/DN → Sales Account, CN → Sales Return Account)</td>
+<td><code>cdsDocDetail.ACCOUNT</code></td>
+</tr>
+<tr>
+<td>Description</td>
+<td><code>AR_IVDTL.ACCOUNT</code> + <code>AR_IVDTL.DESCRIPTION</code></td>
+<td>Concatenated as <code>ACCOUNT \|\| DESCRIPTION</code> (preserves source GL code for audit trail)</td>
+<td><code>cdsDocDetail.DESCRIPTION</code></td>
+</tr>
+<tr>
+<td>Tax Code</td>
+<td><code>AR_IVDTL.TAX</code></td>
+<td>Passed through</td>
+<td><code>cdsDocDetail.TAX</code></td>
+</tr>
+<tr>
+<td>Tax Rate</td>
+<td><code>AR_IVDTL.TAXRATE</code></td>
+<td>Passed through</td>
+<td><code>cdsDocDetail.TAXRATE</code></td>
+</tr>
+<tr>
+<td>Tax Inclusive</td>
+<td><code>AR_IVDTL.TAXINCLUSIVE</code></td>
+<td>Passed through (special SDK handling applied automatically)</td>
+<td><code>cdsDocDetail.TAXINCLUSIVE</code></td>
+</tr>
+<tr>
+<td>Amount</td>
+<td><code>AR_IVDTL.AMOUNT</code></td>
+<td>Passed through</td>
+<td><code>cdsDocDetail.AMOUNT</code></td>
+</tr>
+<tr>
+<td>Tax Amount</td>
+<td><code>AR_IVDTL.TAXAMT</code></td>
+<td>Passed through</td>
+<td><code>cdsDocDetail.TAXAMT</code></td>
+</tr>
+<tr>
+<td>Exempted Tax Rate</td>
+<td><code>AR_IVDTL.EXEMPTED_TAXRATE</code></td>
+<td>Passed through</td>
+<td><code>cdsDocDetail.EXEMPTED_TAXRATE</code></td>
+</tr>
+<tr>
+<td>Exempted Tax Amount</td>
+<td><code>AR_IVDTL.EXEMPTED_TAXAMT</code></td>
+<td>Passed through</td>
+<td><code>cdsDocDetail.EXEMPTED_TAXAMT</code></td>
+</tr>
+</tbody>
+</table>
+<p><strong>Knock-Off Fields (Credit Note only):</strong></p>
+<p>Credit Notes can knock off (offset) Invoices and Debit Notes.</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Source DB</th>
+<th>Transformation</th>
+<th>Consol DB</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Target Doc Type</td>
+<td><code>AR_KNOCKOFF.TODOCTYPE</code></td>
+<td>Passed through (<code>IV</code> or <code>DN</code>)</td>
+<td><code>cdsKnockOff.DocType</code></td>
+</tr>
+<tr>
+<td>Target Doc No</td>
+<td>Resolved from <code>AR_IV.DOCNO</code> or <code>AR_DN.DOCNO</code></td>
+<td>Prepends entity alias</td>
+<td><code>cdsKnockOff.DocNo</code></td>
+</tr>
+<tr>
+<td>Knock-Off Amount</td>
+<td><code>AR_KNOCKOFF.KOAMT</code></td>
+<td>Passed through (document currency)</td>
+<td><code>cdsKnockOff.KOAmt</code></td>
+</tr>
+<tr>
+<td>Local KO Amount</td>
+<td><code>AR_KNOCKOFF.LOCALKOAMT</code></td>
+<td>Passed through (home currency)</td>
+<td><code>cdsKnockOff.LocalKOAmt</code></td>
+</tr>
+<tr>
+<td>Actual Local KO Amount</td>
+<td><code>AR_KNOCKOFF.ACTUALLOCALKOAMT</code></td>
+<td>Passed through (original invoice rate)</td>
+<td><code>cdsKnockOff.ActualLocalKOAmt</code></td>
+</tr>
+<tr>
+<td>Gain/Loss</td>
+<td><code>AR_KNOCKOFF.GAINLOSS</code></td>
+<td>Passed through (realized exchange gain/loss)</td>
+<td><code>cdsKnockOff.GainLoss</code></td>
+</tr>
+</tbody>
+</table>
+<h4>Contra (CT)</h4>
+<p>Contra documents have header + knock-offs only (no detail lines). Knocks off Invoices and Debit Notes.</p>
+<p><strong>Header Fields:</strong></p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Source DB</th>
+<th>Transformation</th>
+<th>Consol DB</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Customer Code</td>
+<td><code>AR_CT.CODE</code></td>
+<td>Same as Customer Code transformation</td>
+<td><code>MainDataSet.CODE</code></td>
+</tr>
+<tr>
+<td>Document No</td>
+<td><code>AR_CT.DOCNO</code></td>
+<td>Prepends entity alias</td>
+<td><code>MainDataSet.DOCNO</code></td>
+</tr>
+<tr>
+<td>Document Date</td>
+<td><code>AR_CT.DOCDATE</code></td>
+<td>Converted to <code>dd/mm/yyyy</code></td>
+<td><code>MainDataSet.DOCDATE</code></td>
+</tr>
+<tr>
+<td>Post Date</td>
+<td><code>AR_CT.POSTDATE</code></td>
+<td>Converted to <code>dd/mm/yyyy</code></td>
+<td><code>MainDataSet.POSTDATE</code></td>
+</tr>
+<tr>
+<td>Description</td>
+<td><code>AR_CT.DESCRIPTION</code></td>
+<td>Passed through</td>
+<td><code>MainDataSet.DESCRIPTION</code></td>
+</tr>
+<tr>
+<td>Currency</td>
+<td><code>AR_CT.CURRENCYCODE</code></td>
+<td>Mapped to ISO code</td>
+<td><code>MainDataSet.CURRENCYCODE</code></td>
+</tr>
+<tr>
+<td>Currency Rate</td>
+<td><code>AR_CT.CURRENCYRATE</code></td>
+<td>Passed through</td>
+<td><code>MainDataSet.CURRENCYRATE</code></td>
+</tr>
+<tr>
+<td>Doc Amount</td>
+<td><code>AR_CT.DOCAMT</code></td>
+<td>Passed through</td>
+<td><code>MainDataSet.DOCAMT</code></td>
+</tr>
+</tbody>
+</table>
+<p><strong>Knock-Off Fields:</strong> Same as Credit Note knock-offs above (targets IV/DN).</p>
+<h4>Payment (PM)</h4>
+<p>Payment documents have header + payment-specific fields + knock-offs (no detail lines). Knocks off Invoices and Debit Notes.</p>
+<p><strong>Header Fields:</strong></p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Source DB</th>
+<th>Transformation</th>
+<th>Consol DB</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Customer Code</td>
+<td><code>AR_PM.CODE</code></td>
+<td>Same as Customer Code transformation</td>
+<td><code>MainDataSet.CODE</code></td>
+</tr>
+<tr>
+<td>Document No</td>
+<td><code>AR_PM.DOCNO</code></td>
+<td>Prepends entity alias</td>
+<td><code>MainDataSet.DOCNO</code></td>
+</tr>
+<tr>
+<td>Document Date</td>
+<td><code>AR_PM.DOCDATE</code></td>
+<td>Converted to <code>dd/mm/yyyy</code></td>
+<td><code>MainDataSet.DOCDATE</code></td>
+</tr>
+<tr>
+<td>Post Date</td>
+<td><code>AR_PM.POSTDATE</code></td>
+<td>Converted to <code>dd/mm/yyyy</code></td>
+<td><code>MainDataSet.POSTDATE</code></td>
+</tr>
+<tr>
+<td>Description</td>
+<td><code>AR_PM.DESCRIPTION</code></td>
+<td>Passed through</td>
+<td><code>MainDataSet.DESCRIPTION</code></td>
+</tr>
+<tr>
+<td>Currency</td>
+<td><code>AR_PM.CURRENCYCODE</code></td>
+<td>Mapped to ISO code</td>
+<td><code>MainDataSet.CURRENCYCODE</code></td>
+</tr>
+<tr>
+<td>Currency Rate</td>
+<td><code>AR_PM.CURRENCYRATE</code></td>
+<td>Passed through</td>
+<td><code>MainDataSet.CURRENCYRATE</code></td>
+</tr>
+<tr>
+<td>Doc Amount</td>
+<td><code>AR_PM.DOCAMT</code></td>
+<td>Passed through</td>
+<td><code>MainDataSet.DOCAMT</code></td>
+</tr>
+<tr>
+<td>Payment Method</td>
+<td><code>AR_PM.PAYMENTMETHOD</code></td>
+<td>Mapped from source code to <code>JOURNAL-ISOCODE</code> format (e.g. <code>CIMB-USD</code> → <code>BANK-USD</code>)</td>
+<td><code>MainDataSet.PAYMENTMETHOD</code></td>
+</tr>
+<tr>
+<td>Cheque Number</td>
+<td><code>AR_PM.CHEQUENUMBER</code></td>
+<td>Passed through</td>
+<td><code>MainDataSet.CHEQUENUMBER</code></td>
+</tr>
+</tbody>
+</table>
+<p><strong>Knock-Off Fields:</strong> Same as Credit Note knock-offs above (targets IV/DN).</p>
+<h4>Customer Refund (CF)</h4>
+<p>Same structure as Payment, but knock-offs target <strong>Credit Notes and Payments</strong> (not IV/DN).</p>
+<p><strong>Header Fields:</strong> Same as Payment above (using <code>AR_CF</code> table).</p>
+<p><strong>Knock-Off Fields:</strong> Same knock-off structure, but targets <code>CN</code> and <code>PM</code> documents instead of <code>IV</code>/<code>DN</code>.</p>
+<h3>Special Handling</h3>
+<div style="background:#e7f2fa;border-left:4px solid #2196F3;padding:12px 16px;margin:16px 0;border-radius:4px;"><strong style="color:#2196F3">Opening Balance Documents</strong><p>Documents dated before the consolidation database's <strong>System Conversion Date</strong> are treated as opening balances — only the header amounts (<code>DOCAMT</code>, <code>LOCALDOCAMT</code>) are saved, with <strong>no detail lines</strong>. This is a SQL Account SDK requirement.</p></div>
+
+<div style="background:#e7f2fa;border-left:4px solid #2196F3;padding:12px 16px;margin:16px 0;border-radius:4px;"><strong style="color:#2196F3">Tax Inclusive Lines</strong><p>Detail lines with tax-inclusive amounts are handled automatically during import. The sync applies special SDK techniques to preserve the exact amounts without SDK auto-recalculation.</p></div>
+
+<div style="background:#e7f2fa;border-left:4px solid #2196F3;padding:12px 16px;margin:16px 0;border-radius:4px;"><strong style="color:#2196F3">Unmapped Customers</strong><p>Only customers with a Company Category assigned in the Category Mapping tab are synced. All documents belonging to unmapped customers are silently skipped. Check the sync log for skipped customer details.</p></div>
+
+<div style="background:#fff8e1;border-left:4px solid #ff9800;padding:12px 16px;margin:16px 0;border-radius:4px;"><strong style="color:#ff9800">Customer Code Length Limit</strong><p>SQL Account enforces a <strong>10-character maximum</strong> for customer codes. After transformation (stripping prefix + prepending entity alias), the resulting code must not exceed 10 characters. The sync will report an error if this limit is exceeded.</p></div>
+
+<h2>FAQ</h2>
+<p><strong>Q: Why are some customers not being synced?</strong></p>
+<p>Only customers with a Company Category assigned in the Category Mapping tab are synced. Unmapped customers are silently skipped. Check the Category Mapping tab and assign categories to the missing customers.</p>
+<p><strong>Q: I get a "Tax code not found" error. What should I do?</strong></p>
+<p>The sync validates that all tax codes used in source documents exist and are active in the consolidation database. Go to SQL Account &gt; SST/GST or Tools &gt; Maintain Tax in the consolidation database and create or enable the missing tax codes.</p>
+<p><strong>Q: Can I sync from SQL Connect Public Cloud databases?</strong></p>
+<p>Yes. Enter the cloud Firebird server address and database name in the Entity Manager. Request connection details from your SQL service dealer.</p>
+<p><strong>Q: What happens if the sync is interrupted?</strong></p>
+<p>Documents that were already synced remain in the consolidation database. You can re-run the sync — in Skip existing mode, already-imported documents will be skipped. In Purge &amp; Re-sync mode, all documents will be deleted and re-imported.</p>
+<p><strong>Q: Why do I see "SDK session locked" errors?</strong></p>
+<p>The SDK COM is a singleton — only one session can be active at a time. Ensure SQL Accounting is not open on the same PC, and that no other sync process is running. The tool automatically releases the SDK license on exit.</p>
+<p><strong>Q: How are currencies handled across different entities?</strong></p>
+<p>Source databases may have user-defined currency codes (e.g. <code>aud</code>). The consolidation database standardizes to ISO currency codes (e.g. <code>AUD</code>). Missing currencies are auto-created during sync.</p>
+<p><strong>Q: What are opening balance documents?</strong></p>
+<p>Documents with a date before the System Conversion Date have header amounts but no detail lines. The sync handles these correctly — importing only the header with <code>DOCAMT</code>/<code>LOCALDOCAMT</code>, without creating detail lines.</p>
+<h2>Program History</h2>
+<p>See <a href="https://github.com/limjoohaw/sql-account-consolidation-sync-tool-via-sdk/blob/master/CHANGELOG.md">CHANGELOG.md</a> for the full version history.</p>
+</body>
+</html>

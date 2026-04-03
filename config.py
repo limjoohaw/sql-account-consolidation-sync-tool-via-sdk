@@ -53,6 +53,7 @@ class EntityConfig:
 class AppConfig:
     consol_db: ConsolDBConfig = field(default_factory=ConsolDBConfig)
     entities: list = field(default_factory=list)
+    last_sync_selection: list = field(default_factory=list)  # entity indices last selected in Sync tab
 
     def add_entity(self, entity: EntityConfig):
         self.entities.append(entity)
@@ -90,6 +91,8 @@ def load_config() -> AppConfig:
             filtered = {k: v for k, v in ent_data.items() if k in valid_fields}
             config.entities.append(EntityConfig(**filtered))
 
+        config.last_sync_selection = data.get("last_sync_selection", [])
+
         return config
 
 
@@ -99,6 +102,7 @@ def save_config(config: AppConfig):
         data = {
             "consol_db": asdict(config.consol_db),
             "entities": [asdict(e) for e in config.entities],
+            "last_sync_selection": config.last_sync_selection,
         }
         with open(CONFIG_FILE, "w") as f:
             json.dump(data, f, indent=4)

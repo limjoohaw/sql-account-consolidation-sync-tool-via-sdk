@@ -1102,6 +1102,8 @@ class App(ctk.CTk):
         self._cat_render_timer = None  # Debounce timer for search
         self._cat_page = 0            # Current page index (0-based)
         self._cat_page_size = 50      # Rows per page
+        self._cat_row_pool = []       # Recycled row widgets: [(chk, var, row_lbl, code_lbl, name_lbl, cur_lbl, combo)]
+        self._cat_no_data_label = None  # "No customers" label (shown/hidden)
 
     def _cat_prev_page(self):
         """Go to previous page."""
@@ -1271,6 +1273,7 @@ class App(ctk.CTk):
         self._cat_combos = []  # Prevent snapshot of old entity's combos
         self._cat_check_vars = []
         self._cat_visible_indices = []
+        # Pool survives entity switch — _cat_render_rows will reuse/hide as needed
         self._cat_page = 0
         self._cat_filter_checked_var.set("All")
         self._cat_filter_row_var.set("")
@@ -1304,23 +1307,33 @@ class App(ctk.CTk):
                         self._cat_checked_codes.discard(code)
 
     def _cat_render_rows(self):
-        """Clear and re-render the customer grid with filter, search, and pagination."""
+        """Render the customer grid with widget recycling for performance."""
         import math
 
-        # Snapshot current selections before destroying widgets
+        # Snapshot current selections before updating widgets
         if self._cat_combos:
             self._cat_snapshot_combos()
-
-        for w in self._cat_scroll.winfo_children():
-            w.destroy()
 
         self._cat_combos = []
         self._cat_check_vars = []
         self._cat_visible_indices = []
 
         if not self._cat_customers:
-            ctk.CTkLabel(self._cat_scroll, text="No customers found in source DB.",
-                          text_color="gray40").grid(row=0, column=0, columnspan=6, pady=20)
+            # Hide all pooled rows
+            for widgets in self._cat_row_pool:
+                chk, var, row_lbl, code_lbl, name_lbl, cur_lbl, combo = widgets
+                chk.grid_remove()
+                row_lbl.grid_remove()
+                code_lbl.grid_remove()
+                name_lbl.grid_remove()
+                cur_lbl.grid_remove()
+                combo.grid_remove()
+            # Show "no data" label
+            if not self._cat_no_data_label:
+                self._cat_no_data_label = ctk.CTkLabel(
+                    self._cat_scroll, text="No customers found in source DB.",
+                    text_color="gray40")
+            self._cat_no_data_label.grid(row=0, column=0, columnspan=6, pady=20)
             self._cat_status_label.configure(text="0 customers")
             self._cat_page_label.configure(text="")
             self._cat_prev_btn.configure(state="disabled")
@@ -1328,6 +1341,10 @@ class App(ctk.CTk):
             self._cat_footer_checked_label.configure(text="")
             self._cat_footer_code_label.configure(text="")
             return
+
+        # Hide "no data" label if visible
+        if self._cat_no_data_label:
+            self._cat_no_data_label.grid_remove()
 
         cat_values = self._cat_cat_values
         entity = self.config.entities[self._cat_entity_idx]
@@ -1395,41 +1412,59 @@ class App(ctk.CTk):
         end = min(start + page_size, total_filtered)
         page_items = filtered[start:end]
 
-        # Step 3: Render rows for current page
+        # Step 3: Update rows using widget recycling
+        needed = len(page_items)
+        scroll_inner = self._cat_scroll._parent_frame
+
+        # Freeze layout — suppress per-widget geometry recalculations
+        scroll_inner.pack_propagate(False)
+
+        # Create new pool rows if needed (plain tk widgets for speed)
+        while len(self._cat_row_pool) < needed:
+            var = tk.BooleanVar()
+            chk = tk.Checkbutton(self._cat_scroll, variable=var,
+                                  bg="white", activebackground="white",
+                                  highlightthickness=0, bd=0)
+            row_lbl = tk.Label(self._cat_scroll, text="", width=5, anchor="center",
+                               font=FONT_CODE_SM, fg="gray40", bg="white")
+            code_lbl = tk.Label(self._cat_scroll, text="", width=14, anchor="w",
+                                font=FONT_CODE_SM, bg="white")
+            name_lbl = tk.Label(self._cat_scroll, text="", anchor="w",
+                                font=FONT_CODE_SM, bg="white")
+            cur_lbl = tk.Label(self._cat_scroll, text="", width=10, anchor="center",
+                               font=FONT_CODE_SM, fg="gray40", bg="white")
+            combo = SearchableComboBox(self._cat_scroll, values=cat_values, width=250)
+            self._cat_row_pool.append((chk, var, row_lbl, code_lbl, name_lbl, cur_lbl, combo))
+
+        # Update visible rows with new data
         for row, orig_idx in enumerate(page_items):
             code, name, currency = self._cat_customers[orig_idx]
             self._cat_visible_indices.append(orig_idx)
 
-            # Checkbox
-            var = ctk.BooleanVar(value=(code in self._cat_checked_codes))
-            ctk.CTkCheckBox(self._cat_scroll, text="", variable=var, width=30,
-                             fg_color=CLR_PRIMARY,
-                             command=lambda c=code, v=var: self._cat_on_check_toggle(c, v)
-                             ).grid(row=row, column=0, padx=4, pady=2, sticky="w")
+            chk, var, row_lbl, code_lbl, name_lbl, cur_lbl, combo = self._cat_row_pool[row]
+
+            # Update checkbox
+            var.set(code in self._cat_checked_codes)
+            chk.configure(command=lambda c=code, v=var: self._cat_on_check_toggle(c, v))
+            chk.configure(variable=var)
+            chk.grid(row=row, column=0, padx=4, pady=2, sticky="w")
             self._cat_check_vars.append(var)
 
-            # Row number (original index)
-            ctk.CTkLabel(self._cat_scroll, text=str(orig_idx + 1), width=30,
-                          font=FONT_CODE_SM, text_color="gray40").grid(row=row, column=1, padx=4, pady=2)
+            # Update labels
+            row_lbl.configure(text=str(orig_idx + 1))
+            row_lbl.grid(row=row, column=1, padx=4, pady=2)
 
-            # Customer code
-            ctk.CTkLabel(self._cat_scroll, text=code, width=120,
-                          font=FONT_CODE_SM).grid(row=row, column=2, padx=4, pady=2)
+            code_lbl.configure(text=code)
+            code_lbl.grid(row=row, column=2, padx=4, pady=2)
 
-            # Company name
-            ctk.CTkLabel(self._cat_scroll, text=name, anchor="w",
-                          font=FONT_CODE_SM).grid(
-                row=row, column=3, padx=4, pady=2, sticky="ew")
+            name_lbl.configure(text=name)
+            name_lbl.grid(row=row, column=3, padx=4, pady=2, sticky="ew")
 
-            # Currency code
-            ctk.CTkLabel(self._cat_scroll, text=currency, width=80,
-                          font=FONT_CODE_SM, text_color="gray40").grid(
-                row=row, column=4, padx=4, pady=2)
+            cur_lbl.configure(text=currency)
+            cur_lbl.grid(row=row, column=4, padx=4, pady=2)
 
-            # Category combo (searchable)
-            combo = SearchableComboBox(self._cat_scroll, values=cat_values, width=250)
-
-            # Pre-select: pending map first, then saved config
+            # Update combo values and selection
+            combo.configure(values=cat_values)
             display_val = self._cat_pending_map.get(code, "")
             if not display_val:
                 saved_code = entity.customer_category_map.get(code, "")
@@ -1442,9 +1477,21 @@ class App(ctk.CTk):
                 combo.set(display_val)
             else:
                 combo.set("(none)")
-
             combo.grid(row=row, column=5, padx=4, pady=2)
             self._cat_combos.append(combo)
+
+        # Hide excess pool rows
+        for row in range(needed, len(self._cat_row_pool)):
+            chk, var, row_lbl, code_lbl, name_lbl, cur_lbl, combo = self._cat_row_pool[row]
+            chk.grid_remove()
+            row_lbl.grid_remove()
+            code_lbl.grid_remove()
+            name_lbl.grid_remove()
+            cur_lbl.grid_remove()
+            combo.grid_remove()
+
+        # Thaw layout — single geometry pass
+        scroll_inner.pack_propagate(True)
 
         # Reset check-all
         self._cat_check_all_var.set(False)
