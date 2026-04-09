@@ -4,9 +4,9 @@
   <img src="icon.png" alt="SQL Consol Sync" width="128">
 </p>
 
-A desktop tool that extracts AR (Accounts Receivable) transactions from multiple source SQL Account databases and consolidates them into a single database for unified Statement of Account group by company category reporting.
+A desktop tool that extracts AR (Accounts Receivable) transactions from multiple source SQL Account databases and consolidates them into a single database for unified Statement of Account grouped by Company Category reporting.
 
-Built for Windows with SQL Account SDK (COM).
+Built for Windows with SQL Account SDK (COM). The UI is web-based (NiceGUI) and opens automatically in the user's default browser at a local port.
 
 ## Quick Start
 
@@ -49,7 +49,7 @@ Compile the app into a standalone `.exe` and package it as a Windows installer. 
 
 | Tool | Version | Purpose |
 |---|---|---|
-| Python | 3.14+ | Runtime (bundled into .exe) |
+| Python | 3.11+ (3.14+ used for releases) | Runtime (bundled into .exe) |
 | PyInstaller | 6.19+ | Compiles Python → standalone .exe |
 | Inno Setup | 6.7+ | Creates Windows installer (setup wizard) |
 | Pillow | 12.1+ | PNG → ICO icon conversion (one-time) |
@@ -79,7 +79,7 @@ pyinstaller SQLAccConsolSync.spec
 Or build from scratch (first time only — generates the `.spec` file):
 
 ```bash
-pyinstaller --onedir --windowed --name "SQLAccConsolSync" --icon=icon.ico --add-data "purple_theme.json;." --add-data "icon.ico;." --add-data "CHANGELOG.md;." main.py
+pyinstaller --onedir --windowed --name "SQLAccConsolSync" --icon=icon.ico --add-data "icon.ico;." --add-data "icon.png;." --add-data "CHANGELOG.md;." --add-data "assets/1. Cust Statement 12 Mths 1 - Group.fr3;assets" main.py
 ```
 
 Output in `dist/SQLAccConsolSync/`:
@@ -88,9 +88,11 @@ Output in `dist/SQLAccConsolSync/`:
 dist/SQLAccConsolSync/
 ├── SQLAccConsolSync.exe        ← Main executable
 ├── _internal/                  ← Python runtime & dependencies
-│   ├── purple_theme.json
 │   ├── icon.ico
+│   ├── icon.png
 │   ├── CHANGELOG.md
+│   ├── assets/
+│   │   └── 1. Cust Statement 12 Mths 1 - Group.fr3
 │   └── ...
 ├── config.json                 ← Created at runtime
 └── logs/                       ← Created at runtime

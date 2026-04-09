@@ -29,9 +29,9 @@
 <div class="title-block">
   <h1>SQL Consol Sync</h1>
   <p class="subtitle">User Guide</p>
-  <p class="version">Version 1.0.0</p>
+  <p class="version">Version 1.2.0</p>
 </div>
-<p><strong>SQL Consol Sync</strong> is a desktop tool that extracts AR (Accounts Receivable) transactions from multiple source SQL Account databases and upserts them into a single consolidation database for unified <strong>Statement of Account</strong> group by company category reporting.</p>
+<p><strong>SQL Consol Sync</strong> is a desktop tool that extracts AR (Accounts Receivable) transactions from multiple source SQL Account databases and upserts them into a single consolidation database for unified <strong>Statement of Account grouped by Company Category</strong> reporting. The UI is web-based (NiceGUI) and opens automatically in the user's default browser.</p>
 <p><strong>Key features:</strong></p>
 <ul>
 <li>Sync AR documents: Invoice (IV), Debit Note (DN), Credit Note (CN), Contra (CT), Payment (PM), Refund (CF)</li>
@@ -64,6 +64,19 @@
 - Company Name, Server (e.g. <code>fb5-pos.sql.com.my</code>), Username, Password, Database name
 - Example: Server=<code>fb5-pos.sql.com.my</code>, Database=<code>abc-trading-sdn-bhd-demo-cloud</code></p></div>
 
+<h3>Customer Statement of Account Report Format</h3>
+<p>The consolidation database requires a customized <strong>FastReport (.fr3)</strong> format to produce the consolidated <strong>12-Month Customer Statement of Account grouped by Company Category</strong>. This format is provided with the tool — download and import it into SQL Account once during setup.</p>
+<p><strong>Download:</strong> <a href="../assets/1.%20Cust%20Statement%2012%20Mths%201%20-%20Group.fr3">1. Cust Statement 12 Mths 1 - Group.fr3</a></p>
+<p><strong>Import steps:</strong></p>
+<ol>
+<li>Open SQL Account and log in to the <strong>consolidation database</strong></li>
+<li>Go to <strong>Tools → Report Designer</strong></li>
+<li>Click <strong>Import</strong> and select the downloaded <code>.fr3</code> file</li>
+<li>Click <strong>Open</strong> to load the format</li>
+<li>Save — the new format becomes available when running the Customer Statement of Account report</li>
+</ol>
+<div style="background:#fff8e1;border-left:4px solid #ff9800;padding:12px 16px;margin:16px 0;border-radius:4px;"><strong style="color:#ff9800">Caution</strong><p>Import this format only into the <strong>consolidation database</strong>, not the source databases. The format is built around the consolidated data structure and will not produce meaningful output on a regular SQL Account database.</p></div>
+
 <h2>Installation</h2>
 <ol>
 <li>
@@ -79,120 +92,153 @@
 </li>
 </ol>
 <h2>One-Time Setup</h2>
+<p>The app uses a <strong>3-tab layout</strong>: <strong>Setup</strong> | <strong>Categories</strong> | <strong>Sync</strong>. First-time users land on the Setup tab automatically; returning users land on the Sync tab.</p>
+
 <h3>Configure Consolidation Database</h3>
 <ol>
 <li>
-<p>Open the <strong>Settings</strong> tab</p>
+<p>Open the <strong>Setup</strong> tab</p>
 </li>
 <li>
-<p>Fill in the consolidation database connection details:</p>
+<p>On the left side under <strong>Consolidation Database</strong>, fill in the two configuration sections:</p>
+<p><strong>SQL Account Configuration (SDK)</strong> — used for writing data via the SDK:</p>
 <ul>
-<li><strong>DCF Path</strong> — Path to <code>Default.DCF</code> file (e.g. <code>C:\eStream\SQLAcc\Share\Default.DCF</code>)</li>
-<li><strong>DB Name</strong> — Database name as registered in SQL Accounting</li>
-<li><strong>Username / Password</strong> — SQL Account login credentials (default: <code>ADMIN</code> / <code>ADMIN</code>)</li>
-<li><strong>Firebird Host</strong> — Firebird server address (default: <code>localhost</code>)</li>
-<li><strong>Firebird DB Path</strong> — Full path to the consolidation <code>.FDB</code> file</li>
-<li><strong>Firebird User / Password</strong> — Firebird login (default: <code>SYSDBA</code> / <code>masterkey</code>)</li>
+<li><strong>DCF Path</strong> — Path to <code>Default.DCF</code> file (e.g. <code>C:\eStream\SQLAccounting\Share\Default.DCF</code>)</li>
+<li><strong>Database Name</strong> — Database name as registered in SQL Accounting (filename only, e.g. <code>CONSOLSOA.FDB</code> — not full path)</li>
+<li><strong>Login Username / Login Password</strong> — SQL Account login credentials (default: <code>ADMIN</code> / <code>ADMIN</code>)</li>
+</ul>
+<p><strong>Direct Database Connection (Read)</strong> — used for fast reads (categories, preview, comparison). Recommended but optional:</p>
+<ul>
+<li><strong>FDB Path</strong> — Full path to the consolidation <code>.FDB</code> file (e.g. <code>C:\eStream\SQLAccounting\DB\CONSOLSOA.FDB</code>)</li>
+<li><strong>Server Address</strong> — Firebird server (default: <code>localhost</code>)</li>
+<li><strong>Database Username / Database Password</strong> — Firebird login (default: <code>SYSDBA</code> / <code>masterkey</code>)</li>
 </ul>
 </li>
 <li>
-<p>Click <strong>Test Connection</strong> to verify both SDK and Firebird connections</p>
+<p>Click <strong>Test Connection</strong>. The test runs in <strong>two phases</strong>:</p>
+<ul>
+<li><strong>Phase 1</strong> — SDK login + <code>SY_PROFILE</code> query to confirm SQL Account credentials</li>
+<li><strong>Phase 2</strong> — Firebird direct connection (only if FDB Path is filled in)</li>
+</ul>
+<p>Possible outcomes:</p>
+<ul>
+<li><strong>Green</strong> — both phases succeeded</li>
+<li><strong>Yellow</strong> — SDK works but FDB Path is blank or the direct connection failed (the app will still run but with slower reads)</li>
+<li><strong>Red</strong> — SDK login failed; check credentials and DCF/Database Name</li>
+</ul>
 </li>
 <li>
-<p>Click <strong>Save Settings</strong></p>
+<p>Click <strong>Save</strong></p>
 </li>
 </ol>
-<h3>Add Source Entities</h3>
+
+<h3>Add Source Companies</h3>
+<p>On the <strong>Setup</strong> tab, the right-side card titled <strong>Source Companies</strong> holds the list of source databases.</p>
 <ol>
 <li>
-<p>Open the <strong>Entity Manager</strong> tab</p>
+<p>Click <strong>+ Add Company</strong> to open the Add dialog</p>
 </li>
 <li>
-<p>Click <strong>Add Entity</strong></p>
-</li>
-<li>
-<p>Fill in the source entity details:</p>
+<p>Fill in the source company details:</p>
+<p><strong>Direct Database Connection (Read)</strong>:</p>
 <ul>
-<li><strong>Entity Name</strong> — Display name for this entity (e.g. <code>ABC Trading Sdn Bhd</code>)</li>
-<li><strong>Customer Code Prefix</strong> — Prefix to strip from source customer codes (optional)</li>
-<li><strong>Firebird DB Path</strong> — Full path to the source entity's <code>.FDB</code> file</li>
-<li><strong>Firebird Host</strong> — Firebird server address (default: <code>localhost</code>)</li>
-<li>
-<p><strong>Firebird User / Password</strong> — Firebird login (default: <code>SYSDBA</code> / <code>masterkey</code>)</p>
-</li>
-<li>
-<p>Click <strong>Save</strong> — the entity will appear in the Entity Manager grid</p>
-</li>
+<li><strong>FDB Path</strong> — Full path to the source company's <code>.FDB</code> file (e.g. <code>C:\eStream\SQLAccounting\DB\ACC-0001.FDB</code>)</li>
+<li><strong>Server Address</strong> — Firebird server (default: <code>localhost</code>)</li>
+<li><strong>Database Username / Database Password</strong> — Firebird login (default: <code>SYSDBA</code> / <code>masterkey</code>)</li>
 </ul>
 </li>
 <li>
-<p>Repeat for each source entity</p>
+<p>Click <strong>Test Connection</strong> in the dialog. If successful, the <strong>Company Info</strong> section auto-fills (read-only) from <code>SY_PROFILE</code>:</p>
+<ul>
+<li><strong>Company Name</strong> — from <code>SY_PROFILE.COMPANYNAME</code></li>
+<li><strong>Remark</strong> — from <code>SY_PROFILE.REMARK</code></li>
+<li><strong>Prefix (ALIAS)</strong> — from <code>SY_PROFILE.ALIAS</code>, used as the document number prefix in the consolidation DB</li>
+</ul>
+</li>
+<li>
+<p>Under <strong>Transformer</strong>, set <strong>Code Prefix to Remove</strong> — the prefix to strip from source customer codes before re-prefixing with the company alias (e.g. <code>300-</code> if the source customer codes look like <code>300-A0001</code>). The dialog auto-detects this from a sample customer code if possible.</p>
+</li>
+<li>
+<p>Click <strong>Save</strong> — the company appears in the Source Companies grid</p>
+</li>
+<li>
+<p>Repeat for each source company</p>
 </li>
 </ol>
-<div style="background:#e7f2fa;border-left:4px solid #2196F3;padding:12px 16px;margin:16px 0;border-radius:4px;"><strong style="color:#2196F3">Entity Prefix</strong><p>The entity prefix (used to prefix document numbers in the consolidation DB) is automatically read from <code>SY_PROFILE.ALIAS</code> in the source database at sync time. Ensure each source entity has a unique <strong>Company Alias</strong> set in SQL Accounting.</p></div>
+<div style="background:#e7f2fa;border-left:4px solid #2196F3;padding:12px 16px;margin:16px 0;border-radius:4px;"><strong style="color:#2196F3">Company Prefix</strong><p>The company prefix (used to prefix document numbers in the consolidation DB) is read from <code>SY_PROFILE.ALIAS</code> in the source database. Make sure each source company has a <strong>unique Company Alias</strong> set in SQL Accounting before adding it here.</p></div>
+<div style="background:#e8f5e9;border-left:4px solid #4caf50;padding:12px 16px;margin:16px 0;border-radius:4px;"><strong style="color:#4caf50">Tip</strong><p>Use the pencil icon in the grid to edit a source company, or the trash icon to remove it. You can also double-click any row to open the edit dialog.</p></div>
 
 <h3>Assign Company Categories</h3>
 <ol>
 <li>
-<p>Open the <strong>Category Mapping</strong> tab</p>
+<p>Open the <strong>Categories</strong> tab</p>
 </li>
 <li>
-<p>Select an entity from the dropdown and click <strong>Load Customers</strong></p>
+<p>Select a source company from the <strong>Source</strong> dropdown and click <strong>Load Customers</strong>. Categories from the consolidation database are auto-loaded alongside the customer list. Use <strong>Refresh Categories</strong> to reload them after creating new categories in SQL Account.</p>
 </li>
 <li>
-<p>For each customer, assign a <strong>Company Category</strong> from the dropdown</p>
+<p>For each customer, assign a <strong>Company Category</strong> from the dropdown in the Category column. The dropdown supports type-ahead search.</p>
+</li>
+<li>
+<p>To assign the same category to many customers at once, use <strong>Bulk Assign</strong>:</p>
 <ul>
-<li>Only customers with a category assigned will be synced</li>
-<li>Unmapped customers are silently skipped during sync</li>
+<li>Tick the rows you want to update (use column filters first to narrow the list)</li>
+<li>Pick a category from the <strong>Bulk Assign</strong> dropdown</li>
+<li>Click <strong>Apply to Checked</strong></li>
 </ul>
 </li>
 <li>
-<p>Use the <strong>Check All</strong> / <strong>Uncheck All</strong> buttons to batch-select customers</p>
+<p>Use <strong>Tick All</strong> / <strong>Un-tick All</strong> to batch-select rows. These only affect rows currently visible after filtering.</p>
 </li>
 <li>
 <p>Click <strong>Save Mapping</strong> to persist the category assignments</p>
 </li>
 </ol>
-<div style="background:#fff3e0;border-left:4px solid #f44336;padding:12px 16px;margin:16px 0;border-radius:4px;"><strong style="color:#f44336">Important</strong><p>Company Categories must already exist in the consolidation database. Create them in SQL Account under <strong>Tools &gt; Maintain Company Category</strong> before assigning mappings.</p></div>
+<div style="background:#fff3e0;border-left:4px solid #f44336;padding:12px 16px;margin:16px 0;border-radius:4px;"><strong style="color:#f44336">Important</strong><p>Only customers with a category assigned will be synced. Unmapped customers are silently skipped during sync (their AR documents are also skipped). Company Categories must already exist in the consolidation database — create them in SQL Account under <strong>Tools &gt; Maintain Company Category</strong> before assigning mappings here.</p></div>
 
 <h2>Recurring Sync</h2>
-<h3>Sync Dashboard</h3>
+<h3>Sync Tab</h3>
 <ol>
 <li>
-<p>Open the <strong>Sync</strong> tab (default tab)</p>
+<p>Open the <strong>Sync</strong> tab (the default tab for returning users — first-time users land on Setup until the Consolidation DB is configured)</p>
 </li>
 <li>
-<p>Enable the entities you want to sync using the checkboxes in the entity list</p>
+<p><strong>Source</strong> — select source companies from the multi-select dropdown. The selection is <strong>remembered between sessions</strong>.</p>
 </li>
 <li>
-<p>Select the modules to sync:</p>
+<p><strong>Data</strong> — select the data modules to sync from the multi-select dropdown. Modules are individual checkboxes:</p>
 <ul>
-<li><strong>Master Data</strong> — Customer master records</li>
-<li><strong>Transaction Data</strong> — AR documents (IV, DN, CN, CT, PM, CF)</li>
+<li><strong>Customer</strong> — customer master records</li>
+<li><strong>IV</strong> (Invoice), <strong>DN</strong> (Debit Note), <strong>CN</strong> (Credit Note), <strong>CT</strong> (Contra), <strong>PM</strong> (Payment), <strong>CF</strong> (Refund) — AR documents</li>
 </ul>
 </li>
 <li>
-<p>Set the <strong>date range filter</strong> (optional):</p>
+<p><strong>Date</strong> — set the date range filter (optional, on by default):</p>
 <ul>
-<li><strong>Date From</strong> — defaults to the earliest <code>last_synced</code> timestamp across selected entities</li>
+<li><strong>Date From</strong> — defaults to the earliest <code>last_synced</code> timestamp across selected source companies</li>
 <li><strong>Date To</strong> — defaults to today</li>
+<li>Untick the checkbox to disable date filtering entirely</li>
+<li>Date From must be <strong>on or before</strong> Date To, otherwise the sync is rejected with a warning</li>
 </ul>
 </li>
 <li>
-<p>Choose <strong>sync mode</strong>:</p>
+<p><strong>Mode</strong> — choose sync mode:</p>
 <ul>
-<li><strong>Skip existing</strong> (default) — only imports new documents; skips documents that already exist in the consolidation DB</li>
-<li><strong>Purge &amp; Re-sync</strong> — deletes all documents for the selected entities within the date range, then re-imports fresh</li>
+<li><strong>Skip existing</strong> (default, recommended) — only imports new documents; skips documents that already exist in the consolidation DB</li>
+<li><strong>Purge &amp; Re-sync</strong> — deletes all documents for the selected source companies within the date range, then re-imports fresh</li>
 </ul>
 </li>
 <li>
-<p>Click <strong>Load Preview</strong> to see record counts (dry run, no data written)</p>
+<p>Click <strong>Preview</strong> to see record counts (dry run, no data written). In Purge &amp; Re-sync mode, Preview also shows a comparison diff (new / changed / deleted documents).</p>
 </li>
 <li>
-<p>Click <strong>Start Sync</strong> to begin the actual sync</p>
+<p>Click <strong>Start Sync</strong> to begin the actual sync. A confirmation dialog will appear before proceeding.</p>
 </li>
 <li>
-<p>Monitor progress in the log panel — duration is shown per module and total</p>
+<p>Monitor progress in the <strong>Sync Log</strong> on the right side. The log shows per-module status, errors, and total duration. Use <strong>Export</strong> to save the log to a <code>.log</code> file.</p>
+</li>
+<li>
+<p>Click <strong>Cancel</strong> to stop a running sync (current document finishes, then sync stops cleanly)</p>
 <p><div style="background:#fff8e1;border-left:4px solid #ff9800;padding:12px 16px;margin:16px 0;border-radius:4px;"><strong style="color:#ff9800">Caution</strong><p>Always <strong>back up the consolidation database</strong> before running a sync, especially in Purge &amp; Re-sync mode.</p></div></p>
 </li>
 </ol>
@@ -231,7 +277,7 @@
 <td>Company Category</td>
 <td>Master</td>
 <td>No (must pre-exist in consol DB)</td>
-<td>From Category Mapping config</td>
+<td>From Categories tab</td>
 </tr>
 <tr>
 <td>Customer</td>
@@ -309,19 +355,19 @@
 <tbody>
 <tr>
 <td>Code</td>
-<td>Category Mapping config</td>
-<td>From user assignment in Category Mapping tab</td>
+<td>Categories tab</td>
+<td>From user assignment in Categories tab</td>
 <td><code>COMPANYCATEGORY.CODE</code></td>
 </tr>
 <tr>
 <td>Description</td>
-<td>Category Mapping config</td>
+<td>Categories tab</td>
 <td>Same as Code</td>
 <td><code>COMPANYCATEGORY.DESCRIPTION</code></td>
 </tr>
 </tbody>
 </table>
-<div style="background:#e7f2fa;border-left:4px solid #2196F3;padding:12px 16px;margin:16px 0;border-radius:4px;"><strong style="color:#2196F3">Info</strong><p>Company Categories must already exist in the consolidation database. The sync creates them if missing based on Category Mapping assignments, but the categories should be pre-configured in SQL Account under <strong>Tools &gt; Maintain Company Category</strong>.</p></div>
+<div style="background:#e7f2fa;border-left:4px solid #2196F3;padding:12px 16px;margin:16px 0;border-radius:4px;"><strong style="color:#2196F3">Info</strong><p>Company Categories must already exist in the consolidation database. The sync creates them if missing based on Categories tab assignments, but the categories should be pre-configured in SQL Account under <strong>Tools &gt; Maintain Company Category</strong>.</p></div>
 
 <h4>Customer</h4>
 <table>
@@ -337,7 +383,7 @@
 <tr>
 <td>Customer Code</td>
 <td><code>AR_CUSTOMER.CODE</code></td>
-<td>Strips source prefix (e.g. <code>300-</code>), prepends entity alias (e.g. <code>A1-</code>). Example: <code>300-A0001</code> → <code>A1-A0001</code>. Max 10 characters.</td>
+<td>Strips source prefix (e.g. <code>300-</code>), prepends company alias (e.g. <code>A1-</code>). Example: <code>300-A0001</code> → <code>A1-A0001</code>. Max 10 characters.</td>
 <td><code>AR_CUSTOMER.CODE</code></td>
 </tr>
 <tr>
@@ -349,13 +395,13 @@
 <tr>
 <td>Company Name 2</td>
 <td><code>SY_PROFILE.COMPANYNAME</code></td>
-<td>Set to the source entity's company name (identifies which entity the customer belongs to)</td>
+<td>Set to the source company's name (identifies which source company the customer belongs to)</td>
 <td><code>AR_CUSTOMER.COMPANYNAME2</code></td>
 </tr>
 <tr>
 <td>Company Category</td>
 <td><code>AR_CUSTOMER.COMPANYCATEGORY</code></td>
-<td><strong>Replaced</strong> with the category assigned in the Category Mapping tab (looked up by original customer code)</td>
+<td><strong>Replaced</strong> with the category assigned in the Categories tab (looked up by original customer code)</td>
 <td><code>AR_CUSTOMER.COMPANYCATEGORY</code></td>
 </tr>
 <tr>
@@ -509,7 +555,7 @@
 <tr>
 <td>Document No</td>
 <td><code>AR_IV.DOCNO</code></td>
-<td>Prepends entity alias (e.g. <code>INV-1001</code> → <code>A1-INV-1001</code>)</td>
+<td>Prepends company alias (e.g. <code>INV-1001</code> → <code>A1-INV-1001</code>)</td>
 <td><code>MainDataSet.DOCNO</code></td>
 </tr>
 <tr>
@@ -650,7 +696,7 @@
 <tr>
 <td>Target Doc No</td>
 <td>Resolved from <code>AR_IV.DOCNO</code> or <code>AR_DN.DOCNO</code></td>
-<td>Prepends entity alias</td>
+<td>Prepends company alias</td>
 <td><code>cdsKnockOff.DocNo</code></td>
 </tr>
 <tr>
@@ -701,7 +747,7 @@
 <tr>
 <td>Document No</td>
 <td><code>AR_CT.DOCNO</code></td>
-<td>Prepends entity alias</td>
+<td>Prepends company alias</td>
 <td><code>MainDataSet.DOCNO</code></td>
 </tr>
 <tr>
@@ -765,7 +811,7 @@
 <tr>
 <td>Document No</td>
 <td><code>AR_PM.DOCNO</code></td>
-<td>Prepends entity alias</td>
+<td>Prepends company alias</td>
 <td><code>MainDataSet.DOCNO</code></td>
 </tr>
 <tr>
@@ -828,22 +874,22 @@
 
 <div style="background:#e7f2fa;border-left:4px solid #2196F3;padding:12px 16px;margin:16px 0;border-radius:4px;"><strong style="color:#2196F3">Tax Inclusive Lines</strong><p>Detail lines with tax-inclusive amounts are handled automatically during import. The sync applies special SDK techniques to preserve the exact amounts without SDK auto-recalculation.</p></div>
 
-<div style="background:#e7f2fa;border-left:4px solid #2196F3;padding:12px 16px;margin:16px 0;border-radius:4px;"><strong style="color:#2196F3">Unmapped Customers</strong><p>Only customers with a Company Category assigned in the Category Mapping tab are synced. All documents belonging to unmapped customers are silently skipped. Check the sync log for skipped customer details.</p></div>
+<div style="background:#e7f2fa;border-left:4px solid #2196F3;padding:12px 16px;margin:16px 0;border-radius:4px;"><strong style="color:#2196F3">Unmapped Customers</strong><p>Only customers with a Company Category assigned in the Categories tab are synced. All documents belonging to unmapped customers are silently skipped. Check the sync log for skipped customer details.</p></div>
 
-<div style="background:#fff8e1;border-left:4px solid #ff9800;padding:12px 16px;margin:16px 0;border-radius:4px;"><strong style="color:#ff9800">Customer Code Length Limit</strong><p>SQL Account enforces a <strong>10-character maximum</strong> for customer codes. After transformation (stripping prefix + prepending entity alias), the resulting code must not exceed 10 characters. The sync will report an error if this limit is exceeded.</p></div>
+<div style="background:#fff8e1;border-left:4px solid #ff9800;padding:12px 16px;margin:16px 0;border-radius:4px;"><strong style="color:#ff9800">Customer Code Length Limit</strong><p>SQL Account enforces a <strong>10-character maximum</strong> for customer codes. After transformation (stripping prefix + prepending company alias), the resulting code must not exceed 10 characters. The sync will report an error if this limit is exceeded.</p></div>
 
 <h2>FAQ</h2>
 <p><strong>Q: Why are some customers not being synced?</strong></p>
-<p>Only customers with a Company Category assigned in the Category Mapping tab are synced. Unmapped customers are silently skipped. Check the Category Mapping tab and assign categories to the missing customers.</p>
+<p>Only customers with a Company Category assigned in the Categories tab are synced. Unmapped customers are silently skipped. Check the Categories tab and assign categories to the missing customers.</p>
 <p><strong>Q: I get a "Tax code not found" error. What should I do?</strong></p>
 <p>The sync validates that all tax codes used in source documents exist and are active in the consolidation database. Go to SQL Account &gt; SST/GST or Tools &gt; Maintain Tax in the consolidation database and create or enable the missing tax codes.</p>
 <p><strong>Q: Can I sync from SQL Connect Public Cloud databases?</strong></p>
-<p>Yes. Enter the cloud Firebird server address and database name in the Entity Manager. Request connection details from your SQL service dealer.</p>
+<p>Yes. Enter the cloud Firebird server address and database name in the <strong>+ Add Company</strong> dialog on the Setup tab. Request connection details from your SQL service dealer.</p>
 <p><strong>Q: What happens if the sync is interrupted?</strong></p>
 <p>Documents that were already synced remain in the consolidation database. You can re-run the sync — in Skip existing mode, already-imported documents will be skipped. In Purge &amp; Re-sync mode, all documents will be deleted and re-imported.</p>
 <p><strong>Q: Why do I see "SDK session locked" errors?</strong></p>
 <p>The SDK COM is a singleton — only one session can be active at a time. Ensure SQL Accounting is not open on the same PC, and that no other sync process is running. The tool automatically releases the SDK license on exit.</p>
-<p><strong>Q: How are currencies handled across different entities?</strong></p>
+<p><strong>Q: How are currencies handled across different source companies?</strong></p>
 <p>Source databases may have user-defined currency codes (e.g. <code>aud</code>). The consolidation database standardizes to ISO currency codes (e.g. <code>AUD</code>). Missing currencies are auto-created during sync.</p>
 <p><strong>Q: What are opening balance documents?</strong></p>
 <p>Documents with a date before the System Conversion Date have header amounts but no detail lines. The sync handles these correctly — importing only the header with <code>DOCAMT</code>/<code>LOCALDOCAMT</code>, without creating detail lines.</p>

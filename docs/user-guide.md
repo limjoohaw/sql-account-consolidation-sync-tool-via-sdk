@@ -45,6 +45,24 @@ For SQL Connect Public Cloud access, request connection details from your servic
 - Example: Server=`fb5-pos.sql.com.my`, Database=`abc-trading-sdn-bhd-demo-cloud`
 :::
 
+### Customer Statement of Account Report Format
+
+The consolidation database requires a customized **FastReport (.fr3)** format to produce the consolidated **12-Month Customer Statement of Account grouped by Company Category**. This format is provided with the tool — download and import it into SQL Account once during setup.
+
+**Download:** [1. Cust Statement 12 Mths 1 - Group.fr3](../assets/1.%20Cust%20Statement%2012%20Mths%201%20-%20Group.fr3)
+
+**Import steps:**
+
+01. Open SQL Account and log in to the **consolidation database**
+01. Go to **Tools → Report Designer**
+01. Click **Import** and select the downloaded `.fr3` file
+01. Click **Open** to load the format
+01. Save — the new format becomes available when running the Customer Statement of Account report
+
+:::caution
+Import this format only into the **consolidation database**, not the source databases. The format is built around the consolidated data structure and will not produce meaningful output on a regular SQL Account database.
+:::
+
 ## Installation
 
 01. Install on the SQL Account server PC (where Firebird and SQL Accounting are installed)
@@ -59,98 +77,129 @@ For SQL Connect Public Cloud access, request connection details from your servic
 
 ## One-Time Setup
 
+The app uses a **3-tab layout**: **Setup** | **Categories** | **Sync**. First-time users land on the Setup tab automatically; returning users land on the Sync tab.
+
 ### Configure Consolidation Database
 
-![settings-tab](images/settings-tab.png)
+![setup-tab](images/setup-tab.png)
+*(Screenshot pending)*
 
-01. Open the **Settings** tab
+01. Open the **Setup** tab
 
-01. Fill in the consolidation database connection details:
-    - **DCF Path** — Path to `Default.DCF` file (e.g. `C:\eStream\SQLAcc\Share\Default.DCF`)
-    - **DB Name** — Database name as registered in SQL Accounting
-    - **Username / Password** — SQL Account login credentials (default: `ADMIN` / `ADMIN`)
-    - **Firebird Host** — Firebird server address (default: `localhost`)
-    - **Firebird DB Path** — Full path to the consolidation `.FDB` file
-    - **Firebird User / Password** — Firebird login (default: `SYSDBA` / `masterkey`)
+01. On the left side under **Consolidation Database**, fill in the two configuration sections:
 
-01. Click **Test Connection** to verify both SDK and Firebird connections
+    **SQL Account Configuration (SDK)** — used for writing data via the SDK:
+    - **DCF Path** — Path to `Default.DCF` file (e.g. `C:\eStream\SQLAccounting\Share\Default.DCF`)
+    - **Database Name** — Database name as registered in SQL Accounting (filename only, e.g. `CONSOLSOA.FDB` — not full path)
+    - **Login Username / Login Password** — SQL Account login credentials (default: `ADMIN` / `ADMIN`)
 
-01. Click **Save Settings**
+    **Direct Database Connection (Read)** — used for fast reads (categories, preview, comparison). Recommended but optional:
+    - **FDB Path** — Full path to the consolidation `.FDB` file (e.g. `C:\eStream\SQLAccounting\DB\CONSOLSOA.FDB`)
+    - **Server Address** — Firebird server (default: `localhost`)
+    - **Database Username / Database Password** — Firebird login (default: `SYSDBA` / `masterkey`)
 
-### Add Source Entities
+01. Click **Test Connection**. The test runs in **two phases**:
+    - **Phase 1** — SDK login + `SY_PROFILE` query to confirm SQL Account credentials
+    - **Phase 2** — Firebird direct connection (only if FDB Path is filled in)
 
-![entity-manager-tab](images/entity-manager-tab.png)
+    Possible outcomes:
+    - **Green** — both phases succeeded
+    - **Yellow** — SDK works but FDB Path is blank or the direct connection failed (the app will still run but with slower reads)
+    - **Red** — SDK login failed; check credentials and DCF/Database Name
 
-01. Open the **Entity Manager** tab
+01. Click **Save**
 
-01. Click **Add Entity**
+### Add Source Companies
 
-01. Fill in the source entity details:
-    - **Entity Name** — Display name for this entity (e.g. `ABC Trading Sdn Bhd`)
-    - **Customer Code Prefix** — Prefix to strip from source customer codes (optional)
-    - **Firebird DB Path** — Full path to the source entity's `.FDB` file
-    - **Firebird Host** — Firebird server address (default: `localhost`)
-    - **Firebird User / Password** — Firebird login (default: `SYSDBA` / `masterkey`)
+On the **Setup** tab, the right-side card titled **Source Companies** holds the list of source databases.
 
-    ![add-entity-dialog](images/add-entity-dialog.png)
+01. Click **+ Add Company** to open the Add dialog
 
-01. Click **Save** — the entity will appear in the Entity Manager grid
+01. Fill in the source company details:
 
-01. Repeat for each source entity
+    **Direct Database Connection (Read)**:
+    - **FDB Path** — Full path to the source company's `.FDB` file (e.g. `C:\eStream\SQLAccounting\DB\ACC-0001.FDB`)
+    - **Server Address** — Firebird server (default: `localhost`)
+    - **Database Username / Database Password** — Firebird login (default: `SYSDBA` / `masterkey`)
 
-:::info[Entity Prefix]
-The entity prefix (used to prefix document numbers in the consolidation DB) is automatically read from `SY_PROFILE.ALIAS` in the source database at sync time. Ensure each source entity has a unique **Company Alias** set in SQL Accounting.
+01. Click **Test Connection** in the dialog. If successful, the **Company Info** section auto-fills (read-only) from `SY_PROFILE`:
+    - **Company Name** — from `SY_PROFILE.COMPANYNAME`
+    - **Remark** — from `SY_PROFILE.REMARK`
+    - **Prefix (ALIAS)** — from `SY_PROFILE.ALIAS`, used as the document number prefix in the consolidation DB
+
+01. Under **Transformer**, set **Code Prefix to Remove** — the prefix to strip from source customer codes before re-prefixing with the company alias (e.g. `300-` if the source customer codes look like `300-A0001`). The dialog auto-detects this from a sample customer code if possible.
+
+01. Click **Save** — the company appears in the Source Companies grid
+
+01. Repeat for each source company
+
+:::info[Company Prefix]
+The company prefix (used to prefix document numbers in the consolidation DB) is read from `SY_PROFILE.ALIAS` in the source database. Make sure each source company has a **unique Company Alias** set in SQL Accounting before adding it here.
+:::
+
+:::tip
+Use the pencil icon in the grid to edit a source company, or the trash icon to remove it. You can also double-click any row to open the edit dialog.
 :::
 
 ### Assign Company Categories
 
-![category-mapping-tab](images/category-mapping-tab.png)
+![categories-tab](images/categories-tab.png)
+*(Screenshot pending)*
 
-01. Open the **Category Mapping** tab
+01. Open the **Categories** tab
 
-01. Select an entity from the dropdown and click **Load Customers**
+01. Select a source company from the **Source** dropdown and click **Load Customers**. Categories from the consolidation database are auto-loaded alongside the customer list. Use **Refresh Categories** to reload them after creating new categories in SQL Account.
 
-01. For each customer, assign a **Company Category** from the dropdown
-    - Only customers with a category assigned will be synced
-    - Unmapped customers are silently skipped during sync
+01. For each customer, assign a **Company Category** from the dropdown in the Category column. The dropdown supports type-ahead search.
 
-01. Use the **Check All** / **Uncheck All** buttons to batch-select customers
+01. To assign the same category to many customers at once, use **Bulk Assign**:
+    - Tick the rows you want to update (use column filters first to narrow the list)
+    - Pick a category from the **Bulk Assign** dropdown
+    - Click **Apply to Checked**
+
+01. Use **Tick All** / **Un-tick All** to batch-select rows. These only affect rows currently visible after filtering.
 
 01. Click **Save Mapping** to persist the category assignments
 
 :::warning[Important]
-Company Categories must already exist in the consolidation database. Create them in SQL Account under **Tools > Maintain Company Category** before assigning mappings.
+Only customers with a category assigned will be synced. Unmapped customers are silently skipped during sync (their AR documents are also skipped). Company Categories must already exist in the consolidation database — create them in SQL Account under **Tools > Maintain Company Category** before assigning mappings here.
 :::
 
 ## Recurring Sync
 
-### Sync Dashboard
+### Sync Tab
 
-![sync-dashboard-tab](images/sync-dashboard-tab.png)
+![sync-tab](images/sync-tab.png)
+*(Screenshot pending)*
 
-01. Open the **Sync** tab (default tab)
+01. Open the **Sync** tab (the default tab for returning users — first-time users land on Setup until the Consolidation DB is configured)
 
-01. Enable the entities you want to sync using the checkboxes in the entity list
+01. **Source** — select source companies from the multi-select dropdown. The selection is **remembered between sessions**.
 
-01. Select the modules to sync:
-    - **Master Data** — Customer master records
-    - **Transaction Data** — AR documents (IV, DN, CN, CT, PM, CF)
+01. **Data** — select the data modules to sync from the multi-select dropdown. Modules are individual checkboxes:
+    - **Customer** — customer master records
+    - **IV** (Invoice), **DN** (Debit Note), **CN** (Credit Note), **CT** (Contra), **PM** (Payment), **CF** (Refund) — AR documents
 
-01. Set the **date range filter** (optional):
-    - **Date From** — defaults to the earliest `last_synced` timestamp across selected entities
+01. **Date** — set the date range filter (optional, on by default):
+    - **Date From** — defaults to the earliest `last_synced` timestamp across selected source companies
     - **Date To** — defaults to today
+    - Untick the checkbox to disable date filtering entirely
+    - Date From must be **on or before** Date To, otherwise the sync is rejected with a warning
 
-01. Choose **sync mode**:
-    - **Skip existing** (default) — only imports new documents; skips documents that already exist in the consolidation DB
-    - **Purge & Re-sync** — deletes all documents for the selected entities within the date range, then re-imports fresh
+01. **Mode** — choose sync mode:
+    - **Skip existing** (default, recommended) — only imports new documents; skips documents that already exist in the consolidation DB
+    - **Purge & Re-sync** — deletes all documents for the selected source companies within the date range, then re-imports fresh
 
-01. Click **Load Preview** to see record counts (dry run, no data written)
+01. Click **Preview** to see record counts (dry run, no data written). In Purge & Re-sync mode, Preview also shows a comparison diff (new / changed / deleted documents).
 
-01. Click **Start Sync** to begin the actual sync
+01. Click **Start Sync** to begin the actual sync. A confirmation dialog will appear before proceeding.
 
-01. Monitor progress in the log panel — duration is shown per module and total
+01. Monitor progress in the **Sync Log** on the right side. The log shows per-module status, errors, and total duration. Use **Export** to save the log to a `.log` file.
 
     ![sync-log-output](images/sync-log-output.png)
+    *(Screenshot pending)*
+
+01. Click **Cancel** to stop a running sync (current document finishes, then sync stops cleanly)
 
 :::caution
 Always **back up the consolidation database** before running a sync, especially in Purge & Re-sync mode.
@@ -195,7 +244,7 @@ Source DBs (Firebird read) → Transformer → Consolidation DB (SDK write)
 
 | Module | Type | Auto-Created? | Key Transformation |
 |--------|------|---------------|-------------------|
-| Company Category | Master | No (must pre-exist in consol DB) | From Category Mapping config |
+| Company Category | Master | No (must pre-exist in consol DB) | From Categories tab |
 | Customer | Master | Upsert (create or update) | Code prefix swap, category reassignment |
 | Currency | Master | Auto-create if missing | Standardized to ISO code |
 | GL Account | Master | Auto-create if missing | JOURNAL-ISOCODE format (e.g. `BANK-USD`) |
@@ -213,21 +262,21 @@ Source DBs (Firebird read) → Transformer → Consolidation DB (SDK write)
 
 | Field | Source DB | Transformation | Consol DB |
 |-------|----------|----------------|-----------|
-| Code | Category Mapping config | From user assignment in Category Mapping tab | `COMPANYCATEGORY.CODE` |
-| Description | Category Mapping config | Same as Code | `COMPANYCATEGORY.DESCRIPTION` |
+| Code | Categories tab | From user assignment in Categories tab | `COMPANYCATEGORY.CODE` |
+| Description | Categories tab | Same as Code | `COMPANYCATEGORY.DESCRIPTION` |
 
 :::info
-Company Categories must already exist in the consolidation database. The sync creates them if missing based on Category Mapping assignments, but the categories should be pre-configured in SQL Account under **Tools > Maintain Company Category**.
+Company Categories must already exist in the consolidation database. The sync creates them if missing based on Categories tab assignments, but the categories should be pre-configured in SQL Account under **Tools > Maintain Company Category**.
 :::
 
 #### Customer
 
 | Field | Source DB | Transformation | Consol DB |
 |-------|----------|----------------|-----------|
-| Customer Code | `AR_CUSTOMER.CODE` | Strips source prefix (e.g. `300-`), prepends entity alias (e.g. `A1-`). Example: `300-A0001` → `A1-A0001`. Max 10 characters. | `AR_CUSTOMER.CODE` |
+| Customer Code | `AR_CUSTOMER.CODE` | Strips source prefix (e.g. `300-`), prepends company alias (e.g. `A1-`). Example: `300-A0001` → `A1-A0001`. Max 10 characters. | `AR_CUSTOMER.CODE` |
 | Company Name | `AR_CUSTOMER.COMPANYNAME` | Passed through | `AR_CUSTOMER.COMPANYNAME` |
-| Company Name 2 | `SY_PROFILE.COMPANYNAME` | Set to the source entity's company name (identifies which entity the customer belongs to) | `AR_CUSTOMER.COMPANYNAME2` |
-| Company Category | `AR_CUSTOMER.COMPANYCATEGORY` | **Replaced** with the category assigned in the Category Mapping tab (looked up by original customer code) | `AR_CUSTOMER.COMPANYCATEGORY` |
+| Company Name 2 | `SY_PROFILE.COMPANYNAME` | Set to the source company's name (identifies which source company the customer belongs to) | `AR_CUSTOMER.COMPANYNAME2` |
+| Company Category | `AR_CUSTOMER.COMPANYCATEGORY` | **Replaced** with the category assigned in the Categories tab (looked up by original customer code) | `AR_CUSTOMER.COMPANYCATEGORY` |
 | Currency | `AR_CUSTOMER.CURRENCYCODE` | Mapped from source currency code to ISO code (e.g. `aud` → `AUD`). Home currency (`----`) unchanged. | `AR_CUSTOMER.CURRENCYCODE` |
 | Contact Person | `AR_CUSTOMERBRANCH.ATTENTION` | Passed through | `cdsBranch.ATTENTION` |
 | Phone | `AR_CUSTOMERBRANCH.PHONE1` | Passed through | `cdsBranch.PHONE1` |
@@ -280,7 +329,7 @@ These three document types share the same field structure with header + detail l
 | Field | Source DB | Transformation | Consol DB |
 |-------|----------|----------------|-----------|
 | Customer Code | `AR_IV.CODE` | Same as Customer Code transformation above | `MainDataSet.CODE` |
-| Document No | `AR_IV.DOCNO` | Prepends entity alias (e.g. `INV-1001` → `A1-INV-1001`) | `MainDataSet.DOCNO` |
+| Document No | `AR_IV.DOCNO` | Prepends company alias (e.g. `INV-1001` → `A1-INV-1001`) | `MainDataSet.DOCNO` |
 | Document Date | `AR_IV.DOCDATE` | Converted to `dd/mm/yyyy` format | `MainDataSet.DOCDATE` |
 | Post Date | `AR_IV.POSTDATE` | Converted to `dd/mm/yyyy` format | `MainDataSet.POSTDATE` |
 | Description | `AR_IV.DESCRIPTION` | Passed through | `MainDataSet.DESCRIPTION` |
@@ -311,7 +360,7 @@ Credit Notes can knock off (offset) Invoices and Debit Notes.
 | Field | Source DB | Transformation | Consol DB |
 |-------|----------|----------------|-----------|
 | Target Doc Type | `AR_KNOCKOFF.TODOCTYPE` | Passed through (`IV` or `DN`) | `cdsKnockOff.DocType` |
-| Target Doc No | Resolved from `AR_IV.DOCNO` or `AR_DN.DOCNO` | Prepends entity alias | `cdsKnockOff.DocNo` |
+| Target Doc No | Resolved from `AR_IV.DOCNO` or `AR_DN.DOCNO` | Prepends company alias | `cdsKnockOff.DocNo` |
 | Knock-Off Amount | `AR_KNOCKOFF.KOAMT` | Passed through (document currency) | `cdsKnockOff.KOAmt` |
 | Local KO Amount | `AR_KNOCKOFF.LOCALKOAMT` | Passed through (home currency) | `cdsKnockOff.LocalKOAmt` |
 | Actual Local KO Amount | `AR_KNOCKOFF.ACTUALLOCALKOAMT` | Passed through (original invoice rate) | `cdsKnockOff.ActualLocalKOAmt` |
@@ -326,7 +375,7 @@ Contra documents have header + knock-offs only (no detail lines). Knocks off Inv
 | Field | Source DB | Transformation | Consol DB |
 |-------|----------|----------------|-----------|
 | Customer Code | `AR_CT.CODE` | Same as Customer Code transformation | `MainDataSet.CODE` |
-| Document No | `AR_CT.DOCNO` | Prepends entity alias | `MainDataSet.DOCNO` |
+| Document No | `AR_CT.DOCNO` | Prepends company alias | `MainDataSet.DOCNO` |
 | Document Date | `AR_CT.DOCDATE` | Converted to `dd/mm/yyyy` | `MainDataSet.DOCDATE` |
 | Post Date | `AR_CT.POSTDATE` | Converted to `dd/mm/yyyy` | `MainDataSet.POSTDATE` |
 | Description | `AR_CT.DESCRIPTION` | Passed through | `MainDataSet.DESCRIPTION` |
@@ -345,7 +394,7 @@ Payment documents have header + payment-specific fields + knock-offs (no detail 
 | Field | Source DB | Transformation | Consol DB |
 |-------|----------|----------------|-----------|
 | Customer Code | `AR_PM.CODE` | Same as Customer Code transformation | `MainDataSet.CODE` |
-| Document No | `AR_PM.DOCNO` | Prepends entity alias | `MainDataSet.DOCNO` |
+| Document No | `AR_PM.DOCNO` | Prepends company alias | `MainDataSet.DOCNO` |
 | Document Date | `AR_PM.DOCDATE` | Converted to `dd/mm/yyyy` | `MainDataSet.DOCDATE` |
 | Post Date | `AR_PM.POSTDATE` | Converted to `dd/mm/yyyy` | `MainDataSet.POSTDATE` |
 | Description | `AR_PM.DESCRIPTION` | Passed through | `MainDataSet.DESCRIPTION` |
@@ -376,18 +425,18 @@ Detail lines with tax-inclusive amounts are handled automatically during import.
 :::
 
 :::info[Unmapped Customers]
-Only customers with a Company Category assigned in the Category Mapping tab are synced. All documents belonging to unmapped customers are silently skipped. Check the sync log for skipped customer details.
+Only customers with a Company Category assigned in the Categories tab are synced. All documents belonging to unmapped customers are silently skipped. Check the sync log for skipped customer details.
 :::
 
 :::caution[Customer Code Length Limit]
-SQL Account enforces a **10-character maximum** for customer codes. After transformation (stripping prefix + prepending entity alias), the resulting code must not exceed 10 characters. The sync will report an error if this limit is exceeded.
+SQL Account enforces a **10-character maximum** for customer codes. After transformation (stripping prefix + prepending company alias), the resulting code must not exceed 10 characters. The sync will report an error if this limit is exceeded.
 :::
 
 ## FAQ
 
 **Q: Why are some customers not being synced?**
 
-Only customers with a Company Category assigned in the Category Mapping tab are synced. Unmapped customers are silently skipped. Check the Category Mapping tab and assign categories to the missing customers.
+Only customers with a Company Category assigned in the Categories tab are synced. Unmapped customers are silently skipped. Check the Categories tab and assign categories to the missing customers.
 
 **Q: I get a "Tax code not found" error. What should I do?**
 
@@ -395,7 +444,7 @@ The sync validates that all tax codes used in source documents exist and are act
 
 **Q: Can I sync from SQL Connect Public Cloud databases?**
 
-Yes. Enter the cloud Firebird server address and database name in the Entity Manager. Request connection details from your SQL service dealer.
+Yes. Enter the cloud Firebird server address and database name in the **+ Add Company** dialog on the Setup tab. Request connection details from your SQL service dealer.
 
 **Q: What happens if the sync is interrupted?**
 
@@ -405,7 +454,7 @@ Documents that were already synced remain in the consolidation database. You can
 
 The SDK COM is a singleton — only one session can be active at a time. Ensure SQL Accounting is not open on the same PC, and that no other sync process is running. The tool automatically releases the SDK license on exit.
 
-**Q: How are currencies handled across different entities?**
+**Q: How are currencies handled across different source companies?**
 
 Source databases may have user-defined currency codes (e.g. `aud`). The consolidation database standardizes to ISO currency codes (e.g. `AUD`). Missing currencies are auto-created during sync.
 

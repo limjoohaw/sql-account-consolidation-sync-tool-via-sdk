@@ -5,7 +5,12 @@ a = Analysis(
     ['main.py'],
     pathex=[],
     binaries=[],
-    datas=[('purple_theme.json', '.'), ('icon.ico', '.'), ('CHANGELOG.md', '.')],
+    datas=[
+        ('icon.ico', '.'),
+        ('icon.png', '.'),
+        ('CHANGELOG.md', '.'),
+        ('assets/1. Cust Statement 12 Mths 1 - Group.fr3', 'assets'),
+    ],
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},
