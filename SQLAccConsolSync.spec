@@ -1,17 +1,31 @@
 # -*- mode: python ; coding: utf-8 -*-
 
+from PyInstaller.utils.hooks import collect_all
+
+# NiceGUI ships hundreds of static files (Quasar, Vue, Tailwind, fonts) and
+# pulls in many dynamically-imported deps (uvicorn, fastapi, websockets,
+# watchfiles, starlette). PyInstaller's static analyzer can't see them, so
+# we must explicitly collect everything or the windowed exe crashes silently
+# the moment NiceGUI tries to serve its first page.
+nicegui_datas, nicegui_binaries, nicegui_hiddenimports = collect_all('nicegui')
+
 
 a = Analysis(
     ['main.py'],
     pathex=[],
-    binaries=[],
+    binaries=nicegui_binaries,
     datas=[
         ('icon.ico', '.'),
         ('icon.png', '.'),
         ('CHANGELOG.md', '.'),
         ('assets/1. Cust Statement 12 Mths 1 - Group.fr3', 'assets'),
+    ] + nicegui_datas,
+    hiddenimports=nicegui_hiddenimports + [
+        'fdb',
+        'win32com',
+        'win32com.client',
+        'pythoncom',
     ],
-    hiddenimports=[],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],

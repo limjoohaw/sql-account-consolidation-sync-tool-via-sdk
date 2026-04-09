@@ -81,71 +81,79 @@ def _show_whats_new():
 
 
 def create_app():
-    """Build the NiceGUI UI (auto-index mode — no @ui.page decorator)."""
+    """Register the NiceGUI page handler.
 
-    config = load_config()
+    Uses @ui.page('/') instead of auto-index mode because PyInstaller bundles
+    can't use auto-index — NiceGUI's auto-index calls runpy.run_path(sys.argv[0])
+    on every request, but in a frozen exe sys.argv[0] is the binary itself,
+    causing 'source code string cannot contain null bytes' errors.
+    """
 
-    # --- Theme & Font ---
-    ui.colors(primary=CLR_PRIMARY, secondary=CLR_SECONDARY, accent=CLR_ACCENT)
-    ui.add_body_html(FONT_IMPORT)
+    @ui.page('/')
+    def _index():
+        config = load_config()
 
-    # --- Header ---
-    with ui.header().classes('items-center justify-between px-4 py-2'
-                             ).style(f'background-color: {CLR_PRIMARY}'):
-        ui.label(f'{APP_NAME} v{APP_VERSION}').classes(
-            'text-white text-lg font-bold')
-        with ui.row().classes('gap-2'):
-            ui.button("What's New", on_click=_show_whats_new
-                      ).props('flat text-color="white" dense')
-            ui.button('About', on_click=_show_about
-                      ).props('flat text-color="white" dense')
+        # --- Theme & Font ---
+        ui.colors(primary=CLR_PRIMARY, secondary=CLR_SECONDARY, accent=CLR_ACCENT)
+        ui.add_body_html(FONT_IMPORT)
 
-    # --- Tabs (3 tabs: Setup | Categories | Sync) ---
-    with ui.tabs().classes('w-full').style(
-            f'background-color: {CLR_BG_SEC}') as tabs:
-        setup_tab = ui.tab('Setup', icon='settings')
-        cat_tab = ui.tab('Categories', icon='category')
-        sync_tab = ui.tab('Sync', icon='sync')
+        # --- Header ---
+        with ui.header().classes('items-center justify-between px-4 py-2'
+                                 ).style(f'background-color: {CLR_PRIMARY}'):
+            ui.label(f'{APP_NAME} v{APP_VERSION}').classes(
+                'text-white text-lg font-bold')
+            with ui.row().classes('gap-2'):
+                ui.button("What's New", on_click=_show_whats_new
+                          ).props('flat text-color="white" dense')
+                ui.button('About', on_click=_show_about
+                          ).props('flat text-color="white" dense')
 
-    # Smart default: Setup for first-time users, Sync for returning users
-    default_tab = setup_tab if not config.consol_db.dcf_path else sync_tab
+        # --- Tabs (3 tabs: Setup | Categories | Sync) ---
+        with ui.tabs().classes('w-full').style(
+                f'background-color: {CLR_BG_SEC}') as tabs:
+            setup_tab = ui.tab('Setup', icon='settings')
+            cat_tab = ui.tab('Categories', icon='category')
+            sync_tab = ui.tab('Sync', icon='sync')
 
-    # --- Tab Panels ---
-    with ui.tab_panels(tabs, value=default_tab).classes('w-full flex-grow'):
+        # Smart default: Setup for first-time users, Sync for returning users
+        default_tab = setup_tab if not config.consol_db.dcf_path else sync_tab
 
-        with ui.tab_panel(setup_tab).classes('p-4'):
-            from tab_setup import build_setup_tab
-            setup_grid = build_setup_tab(config)
+        # --- Tab Panels ---
+        with ui.tab_panels(tabs, value=default_tab).classes('w-full flex-grow'):
 
-        with ui.tab_panel(cat_tab).classes('p-4'):
-            from tab_category import build_category_tab
-            cat_grid, _ = build_category_tab(config, _get_company_categories)
+            with ui.tab_panel(setup_tab).classes('p-4'):
+                from tab_setup import build_setup_tab
+                setup_grid = build_setup_tab(config)
 
-        with ui.tab_panel(sync_tab).classes('p-4'):
-            from tab_sync import build_sync_tab
-            build_sync_tab(config)
+            with ui.tab_panel(cat_tab).classes('p-4'):
+                from tab_category import build_category_tab
+                cat_grid, _ = build_category_tab(config, _get_company_categories)
 
-    # AG Grid doesn't size correctly when initialized in a hidden tab.
-    # Wait for Quasar tab transition, then resize via JS (avoid grid.update()
-    # which re-serializes internal state and causes circular reference errors).
-    # Map tabs to their grids for targeted resize
-    tab_grids = {}
-    if setup_grid:
-        tab_grids[setup_tab] = [setup_grid]
-    tab_grids[cat_tab] = [cat_grid]
+            with ui.tab_panel(sync_tab).classes('p-4'):
+                from tab_sync import build_sync_tab
+                build_sync_tab(config)
 
-    async def _on_tab_change(e):
-        await asyncio.sleep(0.3)
-        active_grids = tab_grids.get(e.value, [])
-        for g in active_grids:
-            try:
-                await g.run_grid_method('sizeColumnsToFit')
-            except Exception:
-                pass
+        # AG Grid doesn't size correctly when initialized in a hidden tab.
+        # Wait for Quasar tab transition, then resize via JS (avoid grid.update()
+        # which re-serializes internal state and causes circular reference errors).
+        # Map tabs to their grids for targeted resize
+        tab_grids = {}
+        if setup_grid:
+            tab_grids[setup_tab] = [setup_grid]
+        tab_grids[cat_tab] = [cat_grid]
 
-    tabs.on_value_change(_on_tab_change)
+        async def _on_tab_change(e):
+            await asyncio.sleep(0.3)
+            active_grids = tab_grids.get(e.value, [])
+            for g in active_grids:
+                try:
+                    await g.run_grid_method('sizeColumnsToFit')
+                except Exception:
+                    pass
 
-    # --- Footer ---
-    with ui.footer().classes('py-1 px-4').style(f'background-color: {CLR_BG_SEC}'):
-        ui.label(f'{APP_NAME} v{APP_VERSION} ({APP_BUILD_NUMBER})'
-                 ).classes('text-xs text-gray-500')
+        tabs.on_value_change(_on_tab_change)
+
+        # --- Footer ---
+        with ui.footer().classes('py-1 px-4').style(f'background-color: {CLR_BG_SEC}'):
+            ui.label(f'{APP_NAME} v{APP_VERSION} ({APP_BUILD_NUMBER})'
+                     ).classes('text-xs text-gray-500')
