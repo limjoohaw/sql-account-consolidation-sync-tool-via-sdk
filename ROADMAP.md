@@ -19,21 +19,20 @@ Project tracking for **SQL Consol Sync** (`SQLAccConsolSync.exe`) — SQL Accoun
   - Include screenshots where helpful
 
 - [ ] **User guide screenshots**
-  - Capture and save to `docs/images/`:
-  - [ ] `settings-tab.png` — Settings tab with consol DB connection fields
-  - [ ] `entity-manager-tab.png` — Entity Manager tab with entity list
-  - [ ] `add-entity-dialog.png` — Add Entity dialog with fields filled in
-  - [ ] `category-mapping-tab.png` — Category Mapping tab with customer list and category dropdowns
-  - [ ] `sync-dashboard-tab.png` — Sync Dashboard with entities, modules, date range, and mode selection
+  - Capture and save to `docs/images/` (referenced from `docs/user-guide.md`):
+  - [ ] `setup-tab.png` — Setup tab showing Consolidation DB config (left) + Source Companies grid (right)
+  - [ ] `add-company-dialog.png` — "+ Add Company" dialog with FDB connection fields and auto-detected Company Info
+  - [ ] `categories-tab.png` — Categories tab with customer list and searchable category dropdowns
+  - [ ] `sync-tab.png` — Sync tab with multi-select source companies, modules, date range, and sync mode
   - [ ] `purge-re-sync-preview.png` — Purge & Re-sync comparison preview (changed/new/deleted)
-  - [ ] `sync-log-output.png` — Sync log panel showing progress and results
+  - [ ] `sync-log-output.png` — Sync Log panel showing progress and results
 
 - [x] **Compile to .exe**
   - PyInstaller 6.x+ `--onedir --windowed` mode
   - .exe name: `SQLAccConsolSync.exe`, install to `C:\eStream\Utilities\SQLAccConsolSync\`
-  - Bundles: Python runtime, fdb, pywin32, customtkinter, purple_theme.json, icon.ico, CHANGELOG.md
-  - `config.json` and `logs/` created next to .exe at runtime (not inside `_internal/`)
-  - Build: `pyinstaller SQLAccConsolSync.spec` (see README for full instructions)
+  - Bundles: Python runtime, fdb, pywin32, NiceGUI (full asset tree via `collect_all`), icon.ico, icon.png, CHANGELOG.md, `assets/1. Cust Statement 12 Mths 1 - Group.fr3`
+  - `config.json`, `logs/`, and (on crash) `startup_error.log` created next to .exe at runtime (not inside `_internal/`)
+  - Build: `pyinstaller SQLAccConsolSync.spec --clean --noconfirm` (see README for full instructions and the Troubleshooting table for known PyInstaller + NiceGUI gotchas)
 
 ### Medium Priority
 
@@ -42,6 +41,20 @@ Project tracking for **SQL Consol Sync** (`SQLAccConsolSync.exe`) — SQL Accoun
   - `cleanup_old_logs()` in `logger.py`, called from `main.py`
 
 ### Low Priority
+
+- [ ] **Source code & credential hardening**
+  - **Background:** PyInstaller bundles Python bytecode (`.pyc`) inside `_internal/PYZ-00.pyz`. Anyone with file-system access to the install directory can extract it in ~5 minutes using free tools (`pyinstxtractor` + `uncompyle6` / `pycdc`) and recover ~95% of the original Python source. Third-party packages (NiceGUI, fdb, etc.) ship as plain `.py` files and have zero protection.
+  - **Realistic risk assessment:**
+    - The codebase has no API keys, no proprietary algorithms, no DRM logic — the value is in domain knowledge + ongoing support, not in any single function. Source theft has limited blast radius.
+    - **The single highest-value target is `config.json`**, which sits next to the `.exe` and stores Firebird/SQL Account credentials in cleartext after the user fills in the Setup tab. Anyone with read access to the install folder (IT staff, malware, ex-employee) can grab them as-is today.
+  - **Recommended improvements (in order of ROI):**
+    - [ ] **Encrypt `config.json` password fields with Windows DPAPI** (`win32crypt.CryptProtectData`). ~30 min change in `config.py`. Ties decryption to the Windows user account that wrote the file, so a copied `config.json` is unreadable elsewhere. **This is the single most valuable hardening step.**
+    - [ ] **Bytecode obfuscation via PyArmor** (or similar). Wraps `.pyc` files with an additional encryption layer that breaks `uncompyle6`. Raises the reverse-engineering bar from "5 minutes for a script kiddie" to "a few hours for a competent reverse engineer." Trade-offs: commercial license cost, occasional runtime issues with PyInstaller bundles, antivirus false positives. Worth it only if there's a specific secret in the code worth protecting.
+    - [ ] **Strings audit** — run `strings.exe` against the bundled exe and verify no hardcoded credentials, API endpoints, or sensitive comments leak in plain text. Add a pre-build check.
+    - [ ] **License agreement / EULA in the installer** — Inno Setup `LicenseFile` directive. Legal protection complements the technical layer.
+  - **Out of scope (unless requirements change):**
+    - Rewriting sensitive logic in C/C++/Rust (massive effort, no clear payoff for this codebase)
+    - Server-side feature gating (requires network connectivity, breaks the offline-friendly design)
 
 - [ ] **Licensing & activation system**
   - Subscription model with key-based activation tied to Machine ID or SQL Account Dongle ID
