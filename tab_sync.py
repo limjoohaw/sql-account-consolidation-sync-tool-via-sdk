@@ -4,7 +4,7 @@ import threading
 import time as _time
 import pythoncom
 from datetime import date, datetime
-from nicegui import ui, run
+from nicegui import ui
 from config import save_config
 from sync_engine import SyncEngine, IMPORT_ORDER, _format_duration
 from logger import SyncLogger
@@ -126,7 +126,6 @@ def build_sync_tab(config, refresh_entity_list_fn=None):
                     _set_default_date_from(config, date_from)
 
                     def on_date_toggle():
-                        state['date_filter'] = date_checkbox.value
                         if not date_checkbox.value:
                             date_from.set_value('')
                             date_to.set_value('')
@@ -197,6 +196,20 @@ def _parse_date(val: str):
     return val
 
 
+def _validate_date_range(df: str, dt: str) -> str:
+    """Validate parsed YYYY-MM-DD date range. Returns error message or None."""
+    for label, val in (('Date From', df), ('Date To', dt)):
+        if val is None:
+            continue
+        try:
+            datetime.strptime(val, '%Y-%m-%d')
+        except (ValueError, TypeError):
+            return f'{label} is not a valid date (expected DD/MM/YYYY).'
+    if df and dt and df > dt:
+        return 'Date From must be on or before Date To.'
+    return None
+
+
 def _get_selected_entities(config, entity_select):
     """Get entity objects from the multi-select dropdown."""
     selected_indices = entity_select.value or []
@@ -240,6 +253,10 @@ def _run_preview(config, state, entity_select, module_select,
     is_purge = state['sync_mode'] == 'purge'
     df = _parse_date(date_from.value)
     dt = _parse_date(date_to.value)
+    err = _validate_date_range(df, dt)
+    if err:
+        ui.notify(err, type='warning')
+        return
     progress_pct = state.get('progress_pct')
 
     log.clear()
@@ -333,12 +350,17 @@ async def _run_sync(config, state, entity_select, module_select,
 
     is_purge = state['sync_mode'] == 'purge'
 
+    df = _parse_date(date_from.value)
+    dt = _parse_date(date_to.value)
+    err = _validate_date_range(df, dt)
+    if err:
+        ui.notify(err, type='warning')
+        return
+
     confirmed = await _confirm_sync(entities, modules, is_purge)
     if not confirmed:
         return
 
-    df = _parse_date(date_from.value)
-    dt = _parse_date(date_to.value)
     progress_pct = state.get('progress_pct')
 
     log.clear()

@@ -7,7 +7,7 @@ import fdb
 from nicegui import ui
 from config import load_config
 from version import APP_NAME, APP_VERSION, APP_BUILD_NUMBER
-from shared import CLR_PRIMARY, CLR_SECONDARY, CLR_BG_SEC, FONT_IMPORT
+from shared import CLR_PRIMARY, CLR_SECONDARY, CLR_ACCENT, CLR_BG_SEC, FONT_IMPORT
 
 
 def _get_company_categories(cfg):
@@ -86,7 +86,7 @@ def create_app():
     config = load_config()
 
     # --- Theme & Font ---
-    ui.colors(primary=CLR_PRIMARY, secondary=CLR_SECONDARY, accent='#8B7FE8')
+    ui.colors(primary=CLR_PRIMARY, secondary=CLR_SECONDARY, accent=CLR_ACCENT)
     ui.add_body_html(FONT_IMPORT)
 
     # --- Header ---
@@ -111,20 +111,15 @@ def create_app():
     default_tab = setup_tab if not config.consol_db.dcf_path else sync_tab
 
     # --- Tab Panels ---
-    grids = []  # collect AG Grids so we can resize on tab switch
-
     with ui.tab_panels(tabs, value=default_tab).classes('w-full flex-grow'):
 
         with ui.tab_panel(setup_tab).classes('p-4'):
             from tab_setup import build_setup_tab
             setup_grid = build_setup_tab(config)
-            if setup_grid:
-                grids.append(setup_grid)
 
         with ui.tab_panel(cat_tab).classes('p-4'):
             from tab_category import build_category_tab
             cat_grid, _ = build_category_tab(config, _get_company_categories)
-            grids.append(cat_grid)
 
         with ui.tab_panel(sync_tab).classes('p-4'):
             from tab_sync import build_sync_tab

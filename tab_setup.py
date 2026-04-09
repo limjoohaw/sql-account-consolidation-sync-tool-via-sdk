@@ -141,13 +141,14 @@ def build_setup_tab(config):
                     import pythoncom
                     pythoncom.CoInitialize()
                     try:
+                        # Phase 1: SDK login
                         import win32com.client
                         app = win32com.client.Dispatch("SQLAcc.BizApp")
                         if app.IsLogin:
                             app.Logout()
                         app.Login(user, pwd, dcf, db)
                         if not app.IsLogin:
-                            return None, "Login failed. Please check your username/password."
+                            return None, None, "SDK login failed. Check username/password."
                         try:
                             ds = app.DBManager.NewDataSet(
                                 "SELECT FIRST 1 COMPANYNAME FROM SY_PROFILE")
@@ -158,27 +159,59 @@ def build_setup_tab(config):
                             finally:
                                 ds.Close()
                             app.Logout()
-                            return company, None
                         except Exception as e:
                             app.Logout()
-                            return None, str(e)
+                            return None, None, f"SDK query failed: {e}"
+
+                        # Phase 2: Firebird direct connection (if configured)
+                        fb_err = None
+                        fb_p = (fb_path.value or '').strip()
+                        if fb_p:
+                            try:
+                                conn = fdb.connect(
+                                    host=(fb_host.value or '').strip() or 'localhost',
+                                    database=fb_p,
+                                    user=(fb_user.value or '').strip() or 'SYSDBA',
+                                    password=(fb_pass.value or '').strip() or 'masterkey',
+                                    charset='UTF8',
+                                )
+                                conn.close()
+                            except Exception as e:
+                                fb_err = str(e)
+
+                        return company, fb_err, None
                     except Exception as e:
-                        return None, str(e)
+                        return None, None, str(e)
                     finally:
                         pythoncom.CoUninitialize()
 
-                company, error = await run.io_bound(_test)
+                company, fb_err, error = await run.io_bound(_test)
 
                 test_progress.set_visibility(False)
                 test_btn.set_enabled(True)
 
                 if error:
                     status_banner(test_result, f'Connection failed: {error}', 'error')
+                elif fb_err:
+                    msg = f'SDK connected to {db}'
+                    if company:
+                        msg += f' ({company})'
+                    msg += f'\n\nDirect DB connection failed: {fb_err}'
+                    status_banner(test_result, msg, 'warning')
                 else:
                     msg = f'Connected to {db}'
                     if company:
                         msg += f' ({company})'
-                    status_banner(test_result, msg, 'success')
+                    fb_p = (fb_path.value or '').strip()
+                    if fb_p:
+                        msg += '\nDirect DB connection OK'
+                        banner_type = 'success'
+                    else:
+                        msg += ('\n\nNote: Direct DB connection is not configured. '
+                                'It is recommended for faster reads (categories, '
+                                'preview, comparison).')
+                        banner_type = 'warning'
+                    status_banner(test_result, msg, banner_type)
 
             def _save_settings():
                 config.consol_db = ConsolDBConfig(

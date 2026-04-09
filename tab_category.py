@@ -267,18 +267,23 @@ async def load_customers(config, state, entity_select, grid, status_label,
             password=entity.fb_password,
             charset='UTF8',
         )
-        cur = conn.cursor()
-        cur.execute('SELECT CODE, COMPANYNAME, CURRENCYCODE FROM AR_CUSTOMER ORDER BY CODE')
-        customers = []
-        for row in cur.fetchall():
-            code = (row[0] or '').strip()
-            name = (row[1] or '').strip()
-            currency = (row[2] or '').strip()
-            if code:
-                customers.append((code, name, currency))
-        cur.close()
-        conn.close()
-        return customers
+        try:
+            cur = conn.cursor()
+            try:
+                cur.execute('SELECT CODE, COMPANYNAME, CURRENCYCODE '
+                            'FROM AR_CUSTOMER ORDER BY CODE')
+                customers = []
+                for row in cur.fetchall():
+                    code = (row[0] or '').strip()
+                    name = (row[1] or '').strip()
+                    currency = (row[2] or '').strip()
+                    if code:
+                        customers.append((code, name, currency))
+                return customers
+            finally:
+                cur.close()
+        finally:
+            conn.close()
 
     try:
         customers = await run.io_bound(_read)

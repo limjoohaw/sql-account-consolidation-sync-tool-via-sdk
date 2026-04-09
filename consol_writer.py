@@ -5,9 +5,16 @@ Uses BizObjects for business logic validation.
 """
 
 import datetime
+import re
 from config import ConsolDBConfig
 from sdk_session import open_consol_session
 from logger import SyncLogger
+
+# Whitelist validation patterns for SDK NewDataSet queries (no parameterized
+# queries available — must validate inputs before string interpolation)
+_VALID_DOC_TYPES = {"IV", "DN", "CN", "CT", "PM", "CF"}
+_VALID_PREFIX_RE = re.compile(r"^[A-Za-z0-9_-]{1,10}$")
+_VALID_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 
 def _sanitize_sql_str(value: str) -> str:
@@ -443,13 +450,25 @@ class ConsolWriter:
 
         Returns list of dicts with header fields for comparison.
         """
+        # Whitelist validation — SDK NewDataSet has no parameterized queries
+        if doc_type not in _VALID_DOC_TYPES:
+            raise ValueError(f"Invalid doc_type '{doc_type}'")
+        if not _VALID_PREFIX_RE.match(prefix or ""):
+            raise ValueError(f"Invalid prefix '{prefix}' "
+                             f"(must be alphanumeric/hyphen, 1-10 chars)")
+        if date_from and not _VALID_DATE_RE.match(date_from):
+            raise ValueError(f"Invalid date_from '{date_from}' "
+                             f"(must be YYYY-MM-DD)")
+        if date_to and not _VALID_DATE_RE.match(date_to):
+            raise ValueError(f"Invalid date_to '{date_to}' "
+                             f"(must be YYYY-MM-DD)")
+
         table = f"AR_{doc_type}"
-        safe_prefix = _sanitize_sql_str(prefix)
-        sql = f"SELECT DOCNO, DOCDATE, CODE, DOCAMT, DESCRIPTION, CURRENCYCODE, CURRENCYRATE FROM {table} WHERE DOCNO LIKE '{safe_prefix}-%'"
+        sql = f"SELECT DOCNO, DOCDATE, CODE, DOCAMT, DESCRIPTION, CURRENCYCODE, CURRENCYRATE FROM {table} WHERE DOCNO LIKE '{prefix}-%'"
         if date_from:
-            sql += f" AND DOCDATE >= '{_sanitize_sql_str(date_from)}'"
+            sql += f" AND DOCDATE >= '{date_from}'"
         if date_to:
-            sql += f" AND DOCDATE <= '{_sanitize_sql_str(date_to)}'"
+            sql += f" AND DOCDATE <= '{date_to}'"
         sql += " ORDER BY DOCNO"
 
         ds = None
@@ -993,6 +1012,8 @@ class ConsolWriter:
         Returns dd/mm/yyyy string that SDK accepts directly.
         """
         if not date_val:
+            if self.logger:
+                self.logger.warning(f"Empty date value received, defaulting to today")
             return datetime.datetime.now().strftime("%d/%m/%Y")
 
         # Already a datetime.date or datetime.datetime
@@ -1013,4 +1034,7 @@ class ConsolWriter:
             return dt.strftime("%d/%m/%Y")
         except ValueError:
             pass
+        if self.logger:
+            self.logger.warning(
+                f"Unparseable date '{date_val}', defaulting to today")
         return datetime.datetime.now().strftime("%d/%m/%Y")

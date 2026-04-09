@@ -423,9 +423,8 @@ class SyncEngine:
                         password=consol_db.fb_password,
                         charset="UTF8",
                     )
+                    consol_cur = consol_conn.cursor()
                     try:
-                        consol_cur = consol_conn.cursor()
-
                         mapped_codes = set(entity.customer_category_map.keys())
 
                         for mod in modules:
@@ -518,6 +517,10 @@ class SyncEngine:
                                 "deleted": deleted_from_source,
                             }
                     finally:
+                        try:
+                            consol_cur.close()
+                        except Exception:
+                            pass
                         consol_conn.close()
 
             except Exception as e:

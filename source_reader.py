@@ -6,7 +6,6 @@ Reads AR transactions and master data from source SQL Account databases.
 import datetime
 import fdb
 from dataclasses import dataclass, field
-from typing import Optional
 from config import EntityConfig
 from logger import SyncLogger
 
@@ -58,7 +57,6 @@ class ARDocRecord:
     amount: float = 0.0
     local_amount: float = 0.0
     cancelled: bool = False
-    agent: str = ""
     details: list = field(default_factory=list)  # List of DocDetailRecord
     # For payments
     payment_method: str = ""
@@ -516,7 +514,11 @@ class SourceReader:
                         gain_loss=float(row[5] or 0),
                     ))
             return knockoffs
-        except Exception:
+        except Exception as e:
+            if self.logger:
+                self.logger.warning(
+                    f"Failed to read knock-offs for {from_doc_type} "
+                    f"DOCKEY={dockey}: {e}")
             return []
         finally:
             cur.close()

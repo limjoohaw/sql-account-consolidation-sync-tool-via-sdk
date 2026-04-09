@@ -109,7 +109,6 @@ class DataTransformer:
             "currency_rate": doc.currency_rate,
             "amount": doc.amount,
             "local_amount": doc.local_amount,
-            "agent": doc.agent,
             "cancelled": doc.cancelled,
             "details": doc.details,
             "company_category": self.entity.customer_category_map.get(doc.code, ""),

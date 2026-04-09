@@ -81,9 +81,12 @@ def load_config() -> AppConfig:
             return AppConfig()
 
         config = AppConfig()
-        # Load consol DB config
+        # Load consol DB config (filter unknown keys for forward/backward compat)
         if "consol_db" in data:
-            config.consol_db = ConsolDBConfig(**data["consol_db"])
+            consol_fields = {f for f in ConsolDBConfig.__dataclass_fields__}
+            consol_filtered = {k: v for k, v in data["consol_db"].items()
+                               if k in consol_fields}
+            config.consol_db = ConsolDBConfig(**consol_filtered)
 
         # Load entities
         valid_fields = {f for f in EntityConfig.__dataclass_fields__}
