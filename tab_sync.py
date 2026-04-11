@@ -116,11 +116,9 @@ def build_sync_tab(config, refresh_entity_list_fn=None):
                 ui.label('Date:').classes('text-sm font-medium')
                 with ui.row().classes('items-center gap-2 flex-nowrap'):
                     date_checkbox = ui.checkbox('', value=True)
-                    date_from = ui.input(placeholder='DD/MM/YYYY').classes('w-32').props(
-                        'outlined dense mask="##/##/####"')
+                    date_from = _create_date_input()
                     ui.label('\u2014').classes('text-gray-400')
-                    date_to = ui.input(placeholder='DD/MM/YYYY').classes('w-32').props(
-                        'outlined dense mask="##/##/####"')
+                    date_to = _create_date_input()
 
                     date_to.set_value(date.today().strftime('%d/%m/%Y'))
                     _set_default_date_from(config, date_from)
@@ -169,6 +167,55 @@ def build_sync_tab(config, refresh_entity_list_fn=None):
 
     # Store progress_pct in state for callbacks
     state['progress_pct'] = progress_pct
+
+    # Expose entity refresh for tab-switch updates
+    def _refresh_sync_entities():
+        opts = {}
+        for i, entity in enumerate(config.entities):
+            display = f"{entity.prefix or '?'} - {entity.name or '(not connected)'}"
+            opts[i] = display
+        entity_select.options = opts
+        # Preserve current selection where still valid
+        cur = entity_select.value or []
+        if not isinstance(cur, list):
+            cur = [cur]
+        entity_select.value = [i for i in cur if i in opts] or list(opts.keys())
+        entity_select.update()
+
+    state['refresh_entities'] = _refresh_sync_entities
+    return state
+
+
+def _create_date_input():
+    """Create a date input with calendar picker and clear-on-focus fix."""
+    # Button is OUTSIDE the input (not in append slot) so clicking it
+    # doesn't focus the input, which would trigger clear-on-focus.
+    with ui.row().classes('items-center gap-0 flex-nowrap'):
+        inp = ui.input(placeholder='DD/MM/YYYY').classes('w-32').props(
+            'outlined dense mask="##/##/####"')
+        with ui.button(icon='edit_calendar', color=None).props('flat round dense size=sm'):
+            with ui.menu() as menu:
+                picker = ui.date().props('no-parent-event')
+    # Bind picker (YYYY-MM-DD) ↔ input (DD/MM/YYYY) with format conversion
+    picker.bind_value(inp,
+                      forward=lambda v: '/'.join(reversed(v.split('-'))) if v else v,
+                      backward=lambda v: '-'.join(reversed(v.split('/'))) if v else v)
+    picker.on_value_change(lambda e: menu.close() if e.value else None)
+    # Fix Quasar mask insert behavior: clear field on focus so typing starts
+    # fresh. Restore previous value on blur if user didn't type anything.
+    _saved = {'value': ''}
+
+    def _on_focus():
+        _saved['value'] = inp.value or ''
+        inp.set_value('')
+
+    def _on_blur():
+        if not (inp.value or '').replace('/', '').strip():
+            inp.set_value(_saved['value'])
+
+    inp.on('focus', _on_focus)
+    inp.on('blur', _on_blur)
+    return inp
 
 
 def _set_default_date_from(config, date_from_input):

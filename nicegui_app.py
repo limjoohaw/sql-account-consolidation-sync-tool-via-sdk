@@ -118,20 +118,33 @@ def create_app():
         # Smart default: Setup for first-time users, Sync for returning users
         default_tab = setup_tab if not config.consol_db.dcf_path else sync_tab
 
+        # Mutable list for cross-tab entity change callbacks (setup tab is
+        # built before category/sync tabs, so callbacks are registered after).
+        _entity_change_cbs = []
+
+        def _on_entity_change():
+            for cb in _entity_change_cbs:
+                cb()
+
         # --- Tab Panels ---
         with ui.tab_panels(tabs, value=default_tab).classes('w-full flex-grow'):
 
             with ui.tab_panel(setup_tab).classes('p-4'):
                 from tab_setup import build_setup_tab
-                setup_grid = build_setup_tab(config)
+                setup_grid = build_setup_tab(config,
+                                             on_entity_change=_on_entity_change)
 
             with ui.tab_panel(cat_tab).classes('p-4'):
                 from tab_category import build_category_tab
-                cat_grid, _ = build_category_tab(config, _get_company_categories)
+                cat_grid, cat_state = build_category_tab(config, _get_company_categories)
 
             with ui.tab_panel(sync_tab).classes('p-4'):
                 from tab_sync import build_sync_tab
-                build_sync_tab(config)
+                sync_state = build_sync_tab(config)
+
+        # Register entity-change refresh callbacks now that all tabs are built
+        _entity_change_cbs.append(cat_state['refresh_entities'])
+        _entity_change_cbs.append(sync_state['refresh_entities'])
 
         # AG Grid doesn't size correctly when initialized in a hidden tab.
         # Wait for Quasar tab transition, then resize via JS (avoid grid.update()
@@ -144,6 +157,12 @@ def create_app():
 
         async def _on_tab_change(e):
             await asyncio.sleep(0.3)
+            # Refresh entity dropdowns when switching to Categories or Sync tab
+            if e.value == cat_tab and cat_state.get('refresh_entities'):
+                cat_state['refresh_entities']()
+            elif e.value == sync_tab and sync_state and sync_state.get('refresh_entities'):
+                sync_state['refresh_entities']()
+            # Resize AG Grids in active tab
             active_grids = tab_grids.get(e.value, [])
             for g in active_grids:
                 try:

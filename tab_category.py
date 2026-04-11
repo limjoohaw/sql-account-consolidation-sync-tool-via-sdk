@@ -215,19 +215,23 @@ def build_category_tab(config, get_company_categories):
 
     # Populate entity dropdown
     _refresh_entity_options(config, entity_select)
+    state['refresh_entities'] = lambda: _refresh_entity_options(config, entity_select)
 
     return grid, state
 
 
 def _refresh_entity_options(config, entity_select):
-    """Refresh the entity selector options."""
+    """Refresh the entity selector options, preserving current selection if valid."""
     options = {}
     for i, entity in enumerate(config.entities):
         display = f"{entity.prefix or '?'} - {entity.name or '(not connected)'}"
         options[i] = display
     entity_select.options = options
-    if options:
-        entity_select.value = list(options.keys())[0]
+    if entity_select.value not in options:
+        if options:
+            entity_select.value = list(options.keys())[0]
+        else:
+            entity_select.value = None
     entity_select.update()
 
 

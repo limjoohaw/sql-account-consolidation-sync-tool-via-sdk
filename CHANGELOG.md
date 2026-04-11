@@ -1,3 +1,10 @@
+Release Build 3 – 12 Apr 2026
+01. Setup tab: Test Connection and Save notifications now display as inline banners below the header (near buttons) instead of bottom-of-page toasts that users missed
+02. Sync tab: Added date picker (calendar icon) beside date fields for mouse-friendly date entry
+03. Sync tab: Fixed date field typing bug — focusing a pre-filled date field now clears it for fresh input; previous value restores on blur if nothing was typed
+04. Category tab: Source company dropdown now refreshes automatically after adding, editing, or removing a source company in Setup tab (no browser refresh needed)
+05. Sync tab: Source company multi-select also refreshes automatically on entity changes
+
 Release Build 2 – 09 Apr 2026
 01. Migrated UI from CustomTkinter to NiceGUI (web-based, opens in default browser)
 02. Tab structure consolidated to 3 tabs: Setup | Categories | Sync

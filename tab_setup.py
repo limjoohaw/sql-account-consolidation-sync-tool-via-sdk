@@ -8,7 +8,7 @@ from shared import (CLR_PRIMARY, CLR_DANGER, AG_GRID_STYLE,
                     status_banner)
 
 
-def build_setup_tab(config):
+def build_setup_tab(config, on_entity_change=None):
     """Build the Setup tab UI. Returns the entity AG Grid (for tab-switch resize)."""
 
     ui.add_body_html(AG_GRID_STYLE)
@@ -47,6 +47,14 @@ def build_setup_tab(config):
                     test_btn = ui.button('Test Connection', icon='wifi_tethering',
                                          color=CLR_PRIMARY).props('outline')
                     save_btn = ui.button('Save', icon='save', color=CLR_PRIMARY)
+
+            # -- Status banner + progress bar (right below header, visible near buttons) --
+            test_result = ui.column().classes('w-full')
+            test_progress = ui.linear_progress(value=0, show_value=False
+                                               ).classes('w-full').props(
+                f'color="{CLR_PRIMARY}" indeterminate size="4px"')
+            test_progress.set_visibility(False)
+
             ui.separator().classes('mb-2')
 
             # == SQL Account Configuration (SDK) ==
@@ -115,15 +123,6 @@ def build_setup_tab(config):
                                        password_toggle_button=True
                                        ).classes('w-full').props('outlined dense')
 
-            # -- Test result banner area --
-            test_result = ui.column().classes('w-full mt-2')
-
-            # -- Progress bar for test connection (hidden by default) --
-            test_progress = ui.linear_progress(value=0, show_value=False
-                                               ).classes('w-full').props(
-                f'color="{CLR_PRIMARY}" indeterminate size="4px"')
-            test_progress.set_visibility(False)
-
             async def _test_connection():
                 dcf = (dcf_path.value or '').strip()
                 db = (db_name.value or '').strip()
@@ -131,7 +130,8 @@ def build_setup_tab(config):
                 pwd = (sql_pass.value or '').strip()
 
                 if not dcf or not db:
-                    ui.notify('Please fill in DCF Path and DB Name.', type='warning')
+                    status_banner(test_result,
+                                  'Please fill in DCF Path and DB Name.', 'warning')
                     return
 
                 test_btn.set_enabled(False)
@@ -226,7 +226,8 @@ def build_setup_tab(config):
                 )
                 save_config(config)
                 welcome.clear()
-                ui.notify('Consolidation DB settings saved.', type='positive')
+                status_banner(test_result,
+                              'Consolidation DB settings saved.', 'success')
 
             test_btn.on_click(_test_connection)
             save_btn.on_click(_save_settings)
@@ -240,7 +241,8 @@ def build_setup_tab(config):
                     'text-base font-bold').style(f'color: {CLR_PRIMARY}')
                 ui.button('+ Add Company', icon='add_business',
                           on_click=lambda: _add_entity_dialog(
-                              config, grid, status_label, empty_state),
+                              config, grid, status_label, empty_state,
+                              on_entity_change),
                           color=CLR_PRIMARY)
 
             ui.separator().classes('mb-1')
@@ -336,16 +338,19 @@ def build_setup_tab(config):
                 if idx is None or idx < 0 or idx >= len(config.entities):
                     return
                 if col == '_edit':
-                    _edit_entity_dialog(config, idx, grid, status_label, empty_state)
+                    _edit_entity_dialog(config, idx, grid, status_label, empty_state,
+                                        on_entity_change)
                 elif col == '_delete':
-                    _delete_entity_dialog(config, idx, grid, status_label, empty_state)
+                    _delete_entity_dialog(config, idx, grid, status_label, empty_state,
+                                          on_entity_change)
 
             grid.on('cellClicked', _on_cell_click)
 
             # Double-click any cell to edit
             grid.on('cellDoubleClicked', lambda e: (
                 _edit_entity_dialog(config, e.args.get('data', {}).get('_index'),
-                                    grid, status_label, empty_state)
+                                    grid, status_label, empty_state,
+                                    on_entity_change)
                 if e.args.get('data', {}).get('_index') is not None
                 and 0 <= e.args.get('data', {}).get('_index') < len(config.entities)
                 else None
@@ -386,19 +391,24 @@ def _refresh_grid(config, grid, status_label, empty_state=None):
         grid.set_visibility(total > 0)
 
 
-def _add_entity_dialog(config, grid, status_label, empty_state=None):
+def _add_entity_dialog(config, grid, status_label, empty_state=None,
+                       on_entity_change=None):
     """Open dialog to add a new entity."""
     _entity_dialog(config, EntityConfig(), is_new=True, index=None,
-                   grid=grid, status_label=status_label, empty_state=empty_state)
+                   grid=grid, status_label=status_label, empty_state=empty_state,
+                   on_entity_change=on_entity_change)
 
 
-def _edit_entity_dialog(config, index, grid, status_label, empty_state=None):
+def _edit_entity_dialog(config, index, grid, status_label, empty_state=None,
+                        on_entity_change=None):
     """Open dialog to edit an existing entity."""
     _entity_dialog(config, config.entities[index], is_new=False, index=index,
-                   grid=grid, status_label=status_label, empty_state=empty_state)
+                   grid=grid, status_label=status_label, empty_state=empty_state,
+                   on_entity_change=on_entity_change)
 
 
-def _delete_entity_dialog(config, index, grid, status_label, empty_state=None):
+def _delete_entity_dialog(config, index, grid, status_label, empty_state=None,
+                          on_entity_change=None):
     """Show confirm dialog, then delete a single entity."""
     entity = config.entities[index]
     name = entity.name or entity.prefix or f'Entity #{index + 1}'
@@ -416,6 +426,8 @@ def _delete_entity_dialog(config, index, grid, status_label, empty_state=None):
                 _refresh_grid(config, grid, status_label, empty_state)
                 dlg.close()
                 ui.notify(f'Removed "{name}".', type='positive')
+                if on_entity_change:
+                    on_entity_change()
 
             ui.button('Delete', icon='delete', on_click=do_delete,
                       color=CLR_DANGER).props('outline')
@@ -423,7 +435,8 @@ def _delete_entity_dialog(config, index, grid, status_label, empty_state=None):
     dlg.open()
 
 
-def _entity_dialog(config, entity, is_new, index, grid, status_label, empty_state=None):
+def _entity_dialog(config, entity, is_new, index, grid, status_label, empty_state=None,
+                   on_entity_change=None):
     """Show add/edit entity dialog."""
     title = 'Add Source Company' if is_new else 'Edit Source Company'
 
@@ -615,6 +628,8 @@ def _entity_dialog(config, entity, is_new, index, grid, status_label, empty_stat
                 _refresh_grid(config, grid, status_label, empty_state)
                 dialog.close()
                 ui.notify('Company saved.', type='positive')
+                if on_entity_change:
+                    on_entity_change()
 
             ui.button('Save', icon='save', on_click=on_save, color=CLR_PRIMARY)
 
