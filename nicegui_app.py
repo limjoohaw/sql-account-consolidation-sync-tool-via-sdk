@@ -3,8 +3,10 @@
 import os
 import sys
 import asyncio
+import logging
 import fdb
-from nicegui import ui
+from nicegui import ui, app
+from nicegui.client import Client
 from config import load_config
 from version import APP_NAME, APP_VERSION, APP_BUILD_NUMBER
 from shared import CLR_PRIMARY, CLR_SECONDARY, CLR_ACCENT, CLR_BG_SEC, FONT_IMPORT
@@ -88,6 +90,42 @@ def create_app():
     on every request, but in a frozen exe sys.argv[0] is the binary itself,
     causing 'source code string cannot contain null bytes' errors.
     """
+
+    # --- Auto-shutdown when browser closes (single-user desktop app) ---
+    # Without this, the uvicorn server runs indefinitely after the browser
+    # closes, leaving a lingering background process that blocks upgrades
+    # (installer can't replace the exe while it's still running).
+    _shutdown_grace_seconds = 30
+    _pending_shutdown = {}
+    _log = logging.getLogger('nicegui_app')
+
+    async def _delayed_shutdown():
+        _log.info('Browser disconnected. Shutting down in %ds unless reconnected...',
+                  _shutdown_grace_seconds)
+        try:
+            await asyncio.sleep(_shutdown_grace_seconds)
+        except asyncio.CancelledError:
+            return
+        if any(c.has_socket_connection for c in Client.instances.values()):
+            _log.info('Client still connected; shutdown cancelled.')
+            return
+        _log.info('No clients reconnected. Shutting down.')
+        app.shutdown()
+
+    def _on_disconnect():
+        task = _pending_shutdown.get('task')
+        if task and not task.done():
+            task.cancel()
+        _pending_shutdown['task'] = asyncio.create_task(_delayed_shutdown())
+
+    def _on_connect():
+        task = _pending_shutdown.get('task')
+        if task and not task.done():
+            task.cancel()
+            _pending_shutdown.pop('task', None)
+
+    app.on_disconnect(_on_disconnect)
+    app.on_connect(_on_connect)
 
     @ui.page('/')
     def _index():

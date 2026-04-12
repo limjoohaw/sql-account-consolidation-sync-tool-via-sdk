@@ -3,7 +3,7 @@
 
 #define MyAppName "SQL Consol Sync"
 #define MyAppExeName "SQLAccConsolSync.exe"
-#define MyAppVersion "1.2.1"
+#define MyAppVersion "1.2.2"
 #define MyAppPublisher ""
 #define MyAppURL ""
 
@@ -43,3 +43,14 @@ Name: "{commondesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; IconFil
 
 [Run]
 Filename: "{app}\{#MyAppExeName}"; Description: "Launch {#MyAppName}"; Flags: nowait postinstall skipifsilent
+
+[Code]
+function PrepareToInstall(var NeedsRestart: Boolean): String;
+var
+  ResultCode: Integer;
+begin
+  // Kill any lingering exe so files are not locked during upgrade.
+  // Safeguard for older versions that don't have auto-shutdown on browser close.
+  Exec('taskkill.exe', '/F /IM {#MyAppExeName}', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+  Result := '';
+end;
