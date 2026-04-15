@@ -1,4 +1,4 @@
-#### Release Build 5 – 12 Apr 2026
+#### Release Build 5 – 15 Apr 2026
 
 1. Setup tab: Save (Consolidation DB) now auto-runs Test Connection first — both SDK and direct Firebird tests must pass before the settings are saved, preventing invalid configs
 2. Setup tab: Save (Source Company) now auto-runs Test Connection first — save is blocked if the Firebird connection fails or SY_PROFILE is empty
