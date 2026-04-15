@@ -6,5 +6,5 @@ IMPORTANT: Update APP_VERSION and APP_BUILD_NUMBER before each release build.
 """
 
 APP_NAME = "SQL Consol Sync"
-APP_VERSION = "1.2.2"
-APP_BUILD_NUMBER = 4
+APP_VERSION = "1.2.3"
+APP_BUILD_NUMBER = 5

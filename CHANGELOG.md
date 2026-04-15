@@ -1,3 +1,13 @@
+#### Release Build 5 – 12 Apr 2026
+
+1. Setup tab: Save (Consolidation DB) now auto-runs Test Connection first — both SDK and direct Firebird tests must pass before the settings are saved, preventing invalid configs
+2. Setup tab: Save (Source Company) now auto-runs Test Connection first — save is blocked if the Firebird connection fails or SY_PROFILE is empty
+3. Setup tab: Save (Source Company) now blocks duplicate prefix (ALIAS) — prevents saving a source DB whose ALIAS conflicts with another configured source, because duplicate prefixes cause document number collisions in the consolidation DB
+4. Setup tab: Source Companies grid now highlights duplicate prefixes in red so conflicts are visible at a glance
+5. Setup tab: New "Refresh" button (next to + Add Company) re-fetches ALIAS / company name / remark from every configured source DB and updates the grid — use this after changing ALIASes in SQL Account to spot conflicts without opening each source company
+6. Sync tab: Preview and Start Sync now validate that ALL configured source DBs have unique live ALIASes from SQL Account (not just the selected subset) — syncing a single source is blocked if its current ALIAS collides with another configured source, because the consolidation DB already uses that prefix
+7. Sync tab: Sync log shows live vs stored ALIAS for each source DB during validation, making ALIAS changes made in SQL Account visible
+
 #### Release Build 4 – 12 Apr 2026
 
 1. App now auto-shuts down 30 seconds after the browser is closed — prevents lingering background process that blocked exe replacement during upgrades

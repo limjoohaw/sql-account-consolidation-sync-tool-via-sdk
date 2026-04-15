@@ -149,6 +149,75 @@ class SyncEngine:
                 if cur["code"] != "----" and cur["isocode"]}
 
     # ------------------------------------------------------------------
+    # Pre-flight: unique prefix validation
+    # ------------------------------------------------------------------
+    def _validate_unique_prefixes(self, entities: list):
+        """Check that ALL configured source DBs have unique live ALIASes.
+
+        Validates against `self.config.entities` (full config), NOT just the
+        `entities` arg (selected subset). Reason: a non-selected entity may
+        already have documents in the consol DB under some prefix; if a
+        selected entity's LIVE alias now matches it (e.g. user changed ALIAS
+        in SQL Account after setup), a sync of the selected entity would
+        collide with the existing data. Live alias is re-read from
+        SY_PROFILE on every validation so ALIAS changes made in SQL Account
+        after setup are caught.
+        """
+        all_entities = list(self.config.entities or [])
+        if not all_entities:
+            return
+
+        if self.logger:
+            self.logger.info(
+                f'Validating prefix uniqueness across all {len(all_entities)} '
+                f'configured source companies (live ALIAS from SY_PROFILE)...')
+
+        prefix_map = {}  # lowercased alias -> [(alias, entity_name), ...]
+        for entity in all_entities:
+            try:
+                with SourceReader(entity, self.logger) as reader:
+                    profile = reader.read_profile()
+                    alias = (profile.alias or '').strip()
+            except Exception as e:
+                if self.logger:
+                    self.logger.warning(
+                        f"Could not read ALIAS from '{entity.name}': {e}")
+                continue
+
+            if self.logger:
+                self.logger.info(
+                    f"  {entity.name or '(unnamed)'}: live ALIAS = "
+                    f"{alias or '(empty)'}"
+                    + (f"  (stored: {entity.prefix})"
+                       if entity.prefix and entity.prefix != alias else '')
+                )
+
+            if not alias:
+                continue
+
+            key = alias.lower()
+            prefix_map.setdefault(key, []).append(
+                (alias, entity.name or '(unnamed)'))
+
+        duplicates = {k: v for k, v in prefix_map.items() if len(v) > 1}
+        if duplicates:
+            lines = []
+            for group in duplicates.values():
+                alias_display = group[0][0]
+                names = ', '.join(e[1] for e in group)
+                lines.append(f'  "{alias_display}" — used by: {names}')
+            raise Exception(
+                'Duplicate prefix (ALIAS) detected. Each source DB must have '
+                'a unique ALIAS in SQL Account because prefixes disambiguate '
+                'document numbers in the consolidation DB. '
+                'Fix the ALIAS in SQL Account, then re-save the affected '
+                'source companies in the Setup tab.\n' + '\n'.join(lines)
+            )
+
+        if self.logger:
+            self.logger.info('Prefix validation OK — all prefixes are unique.')
+
+    # ------------------------------------------------------------------
     # Preview (Dry Run)
     # ------------------------------------------------------------------
     def preview(self, entities: list, modules: list,
@@ -164,6 +233,8 @@ class SyncEngine:
         Returns:
             List of PreviewResult.
         """
+        self._validate_unique_prefixes(entities)
+
         results = []
 
         for entity in entities:
@@ -212,6 +283,8 @@ class SyncEngine:
             List of SyncResult.
         """
         self._cancelled = False
+
+        self._validate_unique_prefixes(entities)
 
         # Filter and order modules
         ordered_modules = [m for m in IMPORT_ORDER if m in modules]
@@ -391,6 +464,8 @@ class SyncEngine:
 
         Returns list of dicts per entity with comparison results.
         """
+        self._validate_unique_prefixes(entities)
+
         results = []
 
         for entity in entities:

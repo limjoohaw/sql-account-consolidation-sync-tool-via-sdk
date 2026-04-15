@@ -327,8 +327,8 @@ def _run_preview(config, state, entity_select, module_select,
 
     def _thread():
         pythoncom.CoInitialize()
+        logger = SyncLogger(log_callback=_log_callback)
         try:
-            logger = SyncLogger(log_callback=_log_callback)
             engine = SyncEngine(config, logger, _progress_callback)
 
             if is_purge:
@@ -370,6 +370,10 @@ def _run_preview(config, state, entity_select, module_select,
 
             _set_syncing(False, preview_btn, sync_btn, cancel_btn)
             progress_label.set_text('Preview complete')
+        except Exception as e:
+            logger.error(f'Preview failed: {e}')
+            _set_syncing(False, preview_btn, sync_btn, cancel_btn)
+            progress_label.set_text('Preview failed')
         finally:
             logger.close()
             pythoncom.CoUninitialize()
@@ -431,8 +435,8 @@ async def _run_sync(config, state, entity_select, module_select,
 
     def _thread():
         pythoncom.CoInitialize()
+        logger = SyncLogger(log_callback=_log_callback)
         try:
-            logger = SyncLogger(log_callback=_log_callback)
             mode_label = 'Purge & Re-sync' if is_purge else 'sync'
             logger.info(f'Starting {mode_label}...')
 
@@ -473,6 +477,11 @@ async def _run_sync(config, state, entity_select, module_select,
 
             if refresh_entity_list_fn:
                 refresh_entity_list_fn()
+        except Exception as e:
+            logger.error(f'Sync failed: {e}')
+            _set_syncing(False, preview_btn, sync_btn, cancel_btn)
+            progress_label.set_text('Sync failed')
+            state['sync_engine'] = None
         finally:
             logger.close()
             pythoncom.CoUninitialize()

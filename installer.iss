@@ -3,7 +3,7 @@
 
 #define MyAppName "SQL Consol Sync"
 #define MyAppExeName "SQLAccConsolSync.exe"
-#define MyAppVersion "1.2.2"
+#define MyAppVersion "1.2.3"
 #define MyAppPublisher ""
 #define MyAppURL ""
 

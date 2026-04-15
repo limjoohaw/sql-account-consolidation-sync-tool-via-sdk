@@ -39,6 +39,12 @@ Source databases and the consolidation database must be on the **same SQL Accoun
 - Consolidation database must have all required **tax codes and rates** pre-configured (e.g. `6%;8%` for SST/GST) — the sync validates tax code existence but does not auto-create them
 - Supports both **local FDB files** and **SQL Connect Public Cloud FDB** (remote Firebird)
 
+:::caution[Untick "Is Default" on tax codes]
+After starting SST/GST in the consolidation database, go to **Tools → Maintain Tax** and make sure **no tax code is marked as "Is Default"**. If a default tax code is set, SQL Account will automatically assign it to imported documents even for non-tax-related transactions — causing the consolidated balances to differ from the source.
+
+To fix: open each tax code, untick the **Is Default** checkbox, and save.
+:::
+
 :::info[Cloud Database Access]
 For SQL Connect Public Cloud access, request connection details from your service dealer:
 - Company Name, Server (e.g. `fb5-pos.sql.com.my`), Username, Password, Database name
@@ -104,10 +110,14 @@ The app uses a **3-tab layout**: **Setup** | **Categories** | **Sync**. First-ti
 
     Possible outcomes:
     - **Green** — both phases succeeded
-    - **Yellow** — SDK works but FDB Path is blank or the direct connection failed (the app will still run but with slower reads)
+    - **Yellow** — SDK works but FDB Path is blank or the direct connection failed
     - **Red** — SDK login failed; check credentials and DCF/Database Name
 
-01. Click **Save**
+01. Click **Save** — the app **automatically runs Test Connection first**. Both the SDK and Firebird direct connection must succeed before the settings are saved. If either fails, the settings are **not** saved and you can fix the inputs and try again.
+
+    :::info[FDB Path is required]
+    From v1.2.3 onwards, the FDB Path is mandatory for the consolidation database because the app relies on the direct Firebird connection for fast reads (categories, preview, comparison).
+    :::
 
 ### Add Source Companies
 
@@ -129,17 +139,30 @@ On the **Setup** tab, the right-side card titled **Source Companies** holds the 
 
 01. Under **Transformer**, set **Code Prefix to Remove** — the prefix to strip from source customer codes before re-prefixing with the company alias (e.g. `300-` if the source customer codes look like `300-A0001`). The dialog auto-detects this from a sample customer code if possible.
 
-01. Click **Save** — the company appears in the Source Companies grid
+01. Click **Save** — the app **automatically runs Test Connection first** and blocks the save if:
+    - The Firebird connection fails
+    - `SY_PROFILE.ALIAS` is empty
+    - **Another source company already uses the same ALIAS** (duplicate prefixes are not allowed because they cause document number collisions in the consolidation DB)
 
 01. Repeat for each source company
 
-:::info[Company Prefix]
-The company prefix (used to prefix document numbers in the consolidation DB) is read from `SY_PROFILE.ALIAS` in the source database. Make sure each source company has a **unique Company Alias** set in SQL Accounting before adding it here.
+:::info[Company Prefix must be unique]
+The company prefix (used to prefix document numbers in the consolidation DB) is read from `SY_PROFILE.ALIAS` in the source database. Each source company **must have a unique ALIAS** in SQL Accounting. Comparison is case-insensitive, so `S1` and `s1` are treated as duplicates.
 :::
 
 :::tip
 Use the pencil icon in the grid to edit a source company, or the trash icon to remove it. You can also double-click any row to open the edit dialog.
 :::
+
+#### Refresh Source Companies
+
+Use the **Refresh** button (next to **+ Add Company**) to re-fetch the live ALIAS / company name / remark from every configured source database. The Source Companies grid is then updated with the latest values from SQL Accounting.
+
+**When to use:**
+- After changing a Company ALIAS in SQL Accounting, to propagate the change into the app without editing each source company
+- Before running a sync, to spot any duplicate ALIASes at a glance
+
+**Duplicate detection:** Any source company whose prefix conflicts with another is highlighted in **red with a light red background** in the Prefix column. Hover to see the tooltip explaining the conflict. Fix the ALIAS in SQL Accounting and click Refresh again.
 
 ### Assign Company Categories
 
@@ -191,6 +214,8 @@ Only customers with a category assigned will be synced. Unmapped customers are s
     - **Purge & Re-sync** — deletes all documents for the selected source companies within the date range, then re-imports fresh
 
 01. Click **Preview** to see record counts (dry run, no data written). In Purge & Re-sync mode, Preview also shows a comparison diff (new / changed / deleted documents).
+
+    **Pre-flight validation:** Both Preview and Start Sync first validate that **all configured** source databases have unique live ALIASes (re-read from `SY_PROFILE` on every run). The sync is blocked if any two source databases now share the same ALIAS, even if only one of them is selected — because the consolidation DB already uses those prefixes. The sync log shows the live ALIAS for each source and flags any mismatch with the stored value.
 
 01. Click **Start Sync** to begin the actual sync. A confirmation dialog will appear before proceeding.
 

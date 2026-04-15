@@ -123,7 +123,14 @@ def build_setup_tab(config, on_entity_change=None):
                                        password_toggle_button=True
                                        ).classes('w-full').props('outlined dense')
 
+            # Shared state so _save_settings can see if the auto-test passed.
+            # Both sdk_ok and fb_ok must be True before save is allowed.
+            test_state = {'sdk_ok': False, 'fb_ok': False}
+
             async def _test_connection():
+                test_state['sdk_ok'] = False
+                test_state['fb_ok'] = False
+
                 dcf = (dcf_path.value or '').strip()
                 db = (db_name.value or '').strip()
                 user = (sql_user.value or '').strip()
@@ -193,17 +200,20 @@ def build_setup_tab(config, on_entity_change=None):
                 if error:
                     status_banner(test_result, f'Connection failed: {error}', 'error')
                 elif fb_err:
+                    test_state['sdk_ok'] = True
                     msg = f'SDK connected to {db}'
                     if company:
                         msg += f' ({company})'
                     msg += f'\n\nDirect DB connection failed: {fb_err}'
                     status_banner(test_result, msg, 'warning')
                 else:
+                    test_state['sdk_ok'] = True
                     msg = f'Connected to {db}'
                     if company:
                         msg += f' ({company})'
                     fb_p = (fb_path.value or '').strip()
                     if fb_p:
+                        test_state['fb_ok'] = True
                         msg += '\nDirect DB connection OK'
                         banner_type = 'success'
                     else:
@@ -213,7 +223,14 @@ def build_setup_tab(config, on_entity_change=None):
                         banner_type = 'warning'
                     status_banner(test_result, msg, banner_type)
 
-            def _save_settings():
+            async def _save_settings():
+                # Auto-test first — both SDK and Firebird must pass before save
+                await _test_connection()
+                if not (test_state['sdk_ok'] and test_state['fb_ok']):
+                    ui.notify('Cannot save: connection test failed. '
+                              'Fix settings and try again.', type='warning')
+                    return
+
                 config.consol_db = ConsolDBConfig(
                     dcf_path=dcf_path.value,
                     db_name=db_name.value,
@@ -226,8 +243,7 @@ def build_setup_tab(config, on_entity_change=None):
                 )
                 save_config(config)
                 welcome.clear()
-                status_banner(test_result,
-                              'Consolidation DB settings saved.', 'success')
+                ui.notify('Consolidation DB settings saved.', type='positive')
 
             test_btn.on_click(_test_connection)
             save_btn.on_click(_save_settings)
@@ -239,11 +255,23 @@ def build_setup_tab(config, on_entity_change=None):
             with ui.row().classes('w-full justify-between items-center'):
                 ui.label('Source Companies').classes(
                     'text-base font-bold').style(f'color: {CLR_PRIMARY}')
-                ui.button('+ Add Company', icon='add_business',
-                          on_click=lambda: _add_entity_dialog(
-                              config, grid, status_label, empty_state,
-                              on_entity_change),
-                          color=CLR_PRIMARY)
+                with ui.row().classes('gap-2'):
+                    refresh_btn = ui.button(
+                        'Refresh', icon='refresh',
+                        on_click=lambda: _refresh_sources_from_fdb(),
+                        color=CLR_PRIMARY).props('outline')
+                    ui.button('+ Add Company', icon='add_business',
+                              on_click=lambda: _add_entity_dialog(
+                                  config, grid, status_label, empty_state,
+                                  on_entity_change),
+                              color=CLR_PRIMARY)
+
+            # -- Status banner + progress bar for Refresh (below header) --
+            refresh_result = ui.column().classes('w-full')
+            refresh_progress = ui.linear_progress(value=0, show_value=False
+                                                   ).classes('w-full').props(
+                f'color="{CLR_PRIMARY}" indeterminate size="4px"')
+            refresh_progress.set_visibility(False)
 
             ui.separator().classes('mb-1')
 
@@ -271,7 +299,11 @@ def build_setup_tab(config, on_entity_change=None):
                         'field': 'prefix',
                         'width': 80,
                         'filter': 'agTextColumnFilter',
-                        'cellStyle': {'color': CLR_PRIMARY, 'fontWeight': 'bold'},
+                        ':cellStyle': '''params => params.data && params.data._dup
+                            ? {color: "#e74c3c", fontWeight: "bold",
+                               backgroundColor: "#fdecea"}
+                            : {color: "#5B4FC7", fontWeight: "bold"}''',
+                        'tooltipField': 'prefix_tooltip',
                     },
                     {
                         'headerName': 'Company Name',
@@ -358,6 +390,93 @@ def build_setup_tab(config, on_entity_change=None):
 
             status_label = ui.label('').classes('text-sm text-gray-500 mt-1')
 
+    async def _refresh_sources_from_fdb():
+        """Re-read ALIAS / company name / remark from each source DB and
+        update config + grid. Lets user spot changes made in SQL Account
+        (e.g. duplicate ALIASes) without opening each entity dialog."""
+        if not config.entities:
+            status_banner(refresh_result,
+                          'No source companies to refresh.', 'warning')
+            return
+
+        refresh_btn.set_enabled(False)
+        refresh_progress.set_visibility(True)
+        total = len(config.entities)
+        status_banner(refresh_result,
+                      f'Refreshing {total} source companies from SQL Account...',
+                      'success')
+
+        def _read_all():
+            results = []
+            for entity in config.entities:
+                try:
+                    conn = fdb.connect(
+                        host=entity.fb_host or 'localhost',
+                        database=entity.fb_path,
+                        user=entity.fb_user or 'SYSDBA',
+                        password=entity.fb_password or 'masterkey',
+                        charset='UTF8',
+                    )
+                    try:
+                        cur = conn.cursor()
+                        cur.execute('SELECT ALIAS, COMPANYNAME, REMARK '
+                                    'FROM SY_PROFILE')
+                        row = cur.fetchone()
+                        cur.close()
+                    finally:
+                        conn.close()
+                    if row:
+                        results.append({
+                            'prefix': (row[0] or '').strip(),
+                            'name': (row[1] or '').strip(),
+                            'remark': (row[2] or '').strip(),
+                            'error': None,
+                        })
+                    else:
+                        results.append({'error': 'SY_PROFILE is empty'})
+                except Exception as e:
+                    results.append({'error': str(e)})
+            return results
+
+        results = await run.io_bound(_read_all)
+
+        updated = 0
+        failed = 0
+        for entity, result in zip(config.entities, results):
+            if result.get('error'):
+                failed += 1
+                continue
+            entity.name = result['name']
+            entity.prefix = result['prefix']
+            entity.remark = result['remark']
+            updated += 1
+
+        save_config(config)
+        _refresh_grid(config, grid, status_label, empty_state)
+        refresh_progress.set_visibility(False)
+        refresh_btn.set_enabled(True)
+
+        if on_entity_change:
+            on_entity_change()
+
+        # Detail line showing each entity's connection error (if any)
+        error_lines = []
+        for entity, result in zip(config.entities, results):
+            if result.get('error'):
+                name = entity.name or entity.prefix or entity.fb_path
+                error_lines.append(f'  {name}: {result["error"]}')
+
+        if failed:
+            msg = f'Refreshed {updated} of {total} source companies. '
+            msg += f'{failed} failed:\n' + '\n'.join(error_lines)
+            status_banner(refresh_result, msg, 'warning')
+        else:
+            status_banner(refresh_result,
+                          f'Refreshed {updated} source companies from SQL '
+                          f'Account. Duplicate prefixes (if any) are '
+                          f'highlighted in red.',
+                          'success')
+
     # Initial data load
     _refresh_grid(config, grid, status_label, empty_state)
 
@@ -366,18 +485,33 @@ def build_setup_tab(config, on_entity_change=None):
 
 def _refresh_grid(config, grid, status_label, empty_state=None):
     """Refresh grid data from config."""
+    # Find duplicate prefixes (case-insensitive) for highlighting
+    prefix_counts = {}
+    for entity in config.entities:
+        p = (entity.prefix or '').strip().lower()
+        if p:
+            prefix_counts[p] = prefix_counts.get(p, 0) + 1
+    duplicated = {p for p, c in prefix_counts.items() if c > 1}
+
     row_data = []
     for i, entity in enumerate(config.entities):
         name_display = entity.name or '(not connected)'
         if entity.remark:
             name_display += f'  ({entity.remark})'
+        prefix_value = entity.prefix or '-'
+        prefix_key = (entity.prefix or '').strip().lower()
+        is_dup = bool(prefix_key and prefix_key in duplicated)
         row_data.append({
             'row_num': i + 1,
-            'prefix': entity.prefix or '-',
+            'prefix': prefix_value,
+            'prefix_tooltip': ('Duplicate prefix — another source company has '
+                               'the same ALIAS. This must be fixed before '
+                               'sync.') if is_dup else prefix_value,
             'name': name_display,
             'strip_prefix': entity.customer_code_prefix or '-',
             'last_synced': entity.last_synced[:19] if entity.last_synced else 'Never',
             '_index': i,
+            '_dup': is_dup,
         })
 
     grid.options['rowData'] = row_data
@@ -528,7 +662,16 @@ def _entity_dialog(config, entity, is_new, index, grid, status_label, empty_stat
             entity_test_btn = ui.button('Test Connection', icon='wifi_tethering',
                                         color=CLR_PRIMARY).props('outline')
 
+            # Staged test results — NOT written to `entity` until save succeeds.
+            # Otherwise a blocked/cancelled save would leave the in-memory entity
+            # mutated and out of sync with config.json and the main grid.
+            entity_test_state = {'ok': False, 'name': '', 'remark': '', 'prefix': ''}
+
             async def on_test():
+                entity_test_state['ok'] = False
+                entity_test_state['name'] = ''
+                entity_test_state['remark'] = ''
+                entity_test_state['prefix'] = ''
                 entity_test_btn.set_enabled(False)
                 entity_test_progress.set_visibility(True)
 
@@ -577,15 +720,20 @@ def _entity_dialog(config, entity, is_new, index, grid, status_label, empty_stat
                     alias = (profile[0] or '').strip()
                     company = (profile[1] or '').strip()
                     remark = (profile[2] or '').strip()
+                    # Update read-only info fields for visual feedback only
                     info_name.set_value(company)
                     info_remark.set_value(remark)
                     info_prefix.set_value(alias)
-                    entity.name = company
-                    entity.remark = remark
-                    entity.prefix = alias
+                    # Stage values — do NOT mutate `entity` yet; that happens on save
+                    entity_test_state['name'] = company
+                    entity_test_state['remark'] = remark
+                    entity_test_state['prefix'] = alias
 
                     if detected_prefix and strip_prefix.value in ('', '300-'):
                         strip_prefix.set_value(detected_prefix)
+
+                    if alias:
+                        entity_test_state['ok'] = True
 
                     msg = f'Connected! {company} (Alias: {alias})'
                     if sample_code:
@@ -597,13 +745,13 @@ def _entity_dialog(config, entity, is_new, index, grid, status_label, empty_stat
 
             entity_test_btn.on_click(on_test)
 
-            def on_save():
+            async def on_save():
                 path = (fb_path.value or '').strip()
                 if not path:
                     ui.notify('FDB Path is required.', type='warning')
                     return
 
-                # Check for duplicate FDB path
+                # Fast check — duplicate FDB path (no test round-trip needed)
                 for i, existing in enumerate(config.entities):
                     if i == index:
                         continue  # skip self when editing
@@ -613,6 +761,37 @@ def _entity_dialog(config, entity, is_new, index, grid, status_label, empty_stat
                                   type='warning')
                         return
 
+                # Auto-test — stages new name/remark/prefix in entity_test_state
+                await on_test()
+                if not entity_test_state['ok']:
+                    ui.notify('Cannot save: connection test failed. '
+                              'Fix settings and try again.', type='warning')
+                    return
+
+                # Duplicate prefix (ALIAS) check — prefix must be unique because
+                # it disambiguates document numbers in the consol DB.
+                # Case-insensitive (s1 and S1 are duplicates). Uses the FRESH
+                # alias from entity_test_state, not the stored entity.prefix.
+                new_prefix = (entity_test_state['prefix'] or '').strip()
+                if new_prefix:
+                    for i, existing in enumerate(config.entities):
+                        if i == index:
+                            continue
+                        existing_prefix = (existing.prefix or '').strip()
+                        if existing_prefix and existing_prefix.lower() == new_prefix.lower():
+                            name = existing.name or existing.prefix or f'Entity #{i + 1}'
+                            status_banner(entity_test_result,
+                                          f'Duplicate prefix "{new_prefix}" — '
+                                          f'already used by "{name}". Prefixes must '
+                                          f'be unique because they disambiguate '
+                                          f'document numbers in the consolidation DB.',
+                                          'error')
+                            return
+
+                # All checks passed — now commit staged values to the entity object
+                entity.name = entity_test_state['name']
+                entity.remark = entity_test_state['remark']
+                entity.prefix = entity_test_state['prefix']
                 entity.fb_path = fb_path.value
                 entity.fb_host = fb_host.value
                 entity.fb_user = fb_user.value

@@ -60,6 +60,7 @@
 <li>Consolidation database must have all required <strong>tax codes and rates</strong> pre-configured (e.g. <code>6%;8%</code> for SST/GST) — the sync validates tax code existence but does not auto-create them</li>
 <li>Supports both <strong>local FDB files</strong> and <strong>SQL Connect Public Cloud FDB</strong> (remote Firebird)</li>
 </ul>
+<div style="background:#fff8e1;border-left:4px solid #ff9800;padding:12px 16px;margin:16px 0;border-radius:4px;"><strong style="color:#ff9800">Untick "Is Default" on tax codes</strong><p>After starting SST/GST in the consolidation database, go to <strong>Tools → Maintain Tax</strong> and make sure <strong>no tax code is marked as "Is Default"</strong>. If a default tax code is set, SQL Account will automatically assign it to imported documents even for non-tax-related transactions — causing the consolidated balances to differ from the source.</p><p>To fix: open each tax code, untick the <strong>Is Default</strong> checkbox, and save.</p></div>
 <div style="background:#e7f2fa;border-left:4px solid #2196F3;padding:12px 16px;margin:16px 0;border-radius:4px;"><strong style="color:#2196F3">Cloud Database Access</strong><p>For SQL Connect Public Cloud access, request connection details from your service dealer:
 - Company Name, Server (e.g. <code>fb5-pos.sql.com.my</code>), Username, Password, Database name
 - Example: Server=<code>fb5-pos.sql.com.my</code>, Database=<code>abc-trading-sdn-bhd-demo-cloud</code></p></div>
@@ -123,12 +124,13 @@
 <p>Possible outcomes:</p>
 <ul>
 <li><strong>Green</strong> — both phases succeeded</li>
-<li><strong>Yellow</strong> — SDK works but FDB Path is blank or the direct connection failed (the app will still run but with slower reads)</li>
+<li><strong>Yellow</strong> — SDK works but FDB Path is blank or the direct connection failed</li>
 <li><strong>Red</strong> — SDK login failed; check credentials and DCF/Database Name</li>
 </ul>
 </li>
 <li>
-<p>Click <strong>Save</strong></p>
+<p>Click <strong>Save</strong> — the app <strong>automatically runs Test Connection first</strong>. Both the SDK and Firebird direct connection must succeed before the settings are saved. If either fails, the settings are <strong>not</strong> saved and you can fix the inputs and try again.</p>
+<div style="background:#e7f2fa;border-left:4px solid #2196F3;padding:12px 16px;margin:16px 0;border-radius:4px;"><strong style="color:#2196F3">FDB Path is required</strong><p>From v1.2.3 onwards, the FDB Path is mandatory for the consolidation database because the app relies on the direct Firebird connection for fast reads (categories, preview, comparison).</p></div>
 </li>
 </ol>
 
@@ -159,14 +161,28 @@
 <p>Under <strong>Transformer</strong>, set <strong>Code Prefix to Remove</strong> — the prefix to strip from source customer codes before re-prefixing with the company alias (e.g. <code>300-</code> if the source customer codes look like <code>300-A0001</code>). The dialog auto-detects this from a sample customer code if possible.</p>
 </li>
 <li>
-<p>Click <strong>Save</strong> — the company appears in the Source Companies grid</p>
+<p>Click <strong>Save</strong> — the app <strong>automatically runs Test Connection first</strong> and blocks the save if:</p>
+<ul>
+<li>The Firebird connection fails</li>
+<li><code>SY_PROFILE.ALIAS</code> is empty</li>
+<li><strong>Another source company already uses the same ALIAS</strong> (duplicate prefixes are not allowed because they cause document number collisions in the consolidation DB)</li>
+</ul>
 </li>
 <li>
 <p>Repeat for each source company</p>
 </li>
 </ol>
-<div style="background:#e7f2fa;border-left:4px solid #2196F3;padding:12px 16px;margin:16px 0;border-radius:4px;"><strong style="color:#2196F3">Company Prefix</strong><p>The company prefix (used to prefix document numbers in the consolidation DB) is read from <code>SY_PROFILE.ALIAS</code> in the source database. Make sure each source company has a <strong>unique Company Alias</strong> set in SQL Accounting before adding it here.</p></div>
+<div style="background:#e7f2fa;border-left:4px solid #2196F3;padding:12px 16px;margin:16px 0;border-radius:4px;"><strong style="color:#2196F3">Company Prefix must be unique</strong><p>The company prefix (used to prefix document numbers in the consolidation DB) is read from <code>SY_PROFILE.ALIAS</code> in the source database. Each source company <strong>must have a unique ALIAS</strong> in SQL Accounting. Comparison is case-insensitive, so <code>S1</code> and <code>s1</code> are treated as duplicates.</p></div>
 <div style="background:#e8f5e9;border-left:4px solid #4caf50;padding:12px 16px;margin:16px 0;border-radius:4px;"><strong style="color:#4caf50">Tip</strong><p>Use the pencil icon in the grid to edit a source company, or the trash icon to remove it. You can also double-click any row to open the edit dialog.</p></div>
+
+<h4>Refresh Source Companies</h4>
+<p>Use the <strong>Refresh</strong> button (next to <strong>+ Add Company</strong>) to re-fetch the live ALIAS / company name / remark from every configured source database. The Source Companies grid is then updated with the latest values from SQL Accounting.</p>
+<p><strong>When to use:</strong></p>
+<ul>
+<li>After changing a Company ALIAS in SQL Accounting, to propagate the change into the app without editing each source company</li>
+<li>Before running a sync, to spot any duplicate ALIASes at a glance</li>
+</ul>
+<p><strong>Duplicate detection:</strong> Any source company whose prefix conflicts with another is highlighted in <strong>red with a light red background</strong> in the Prefix column. Hover to see the tooltip explaining the conflict. Fix the ALIAS in SQL Accounting and click Refresh again.</p>
 
 <h3>Assign Company Categories</h3>
 <ol>
@@ -230,6 +246,7 @@
 </li>
 <li>
 <p>Click <strong>Preview</strong> to see record counts (dry run, no data written). In Purge &amp; Re-sync mode, Preview also shows a comparison diff (new / changed / deleted documents).</p>
+<p><strong>Pre-flight validation:</strong> Both Preview and Start Sync first validate that <strong>all configured</strong> source databases have unique live ALIASes (re-read from <code>SY_PROFILE</code> on every run). The sync is blocked if any two source databases now share the same ALIAS, even if only one of them is selected — because the consolidation DB already uses those prefixes. The sync log shows the live ALIAS for each source and flags any mismatch with the stored value.</p>
 </li>
 <li>
 <p>Click <strong>Start Sync</strong> to begin the actual sync. A confirmation dialog will appear before proceeding.</p>
