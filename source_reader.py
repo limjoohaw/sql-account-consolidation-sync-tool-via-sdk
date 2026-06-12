@@ -56,6 +56,7 @@ class ARDocRecord:
     currency_rate: float = 1.0
     amount: float = 0.0
     local_amount: float = 0.0
+    unapplied_amount: float = 0.0  # Customer-ccy unapplied remainder (CN/CT/PM/CF only)
     cancelled: bool = False
     details: list = field(default_factory=list)  # List of DocDetailRecord
     # For payments
@@ -285,10 +286,13 @@ class SourceReader:
             return self._read_refunds(date_from, date_to)
 
         # Non-PM documents: IV, DN, CN, CT (only non-cancelled)
+        # Only CN/CT carry an unapplied remainder column; IV/DN do not have it.
+        has_unapplied = doc_type in ("CN", "CT")
+        unapplied_col = ", UNAPPLIEDAMT" if has_unapplied else ""
         sql = f"""
             SELECT DOCKEY, DOCNO, DOCDATE, POSTDATE, CODE,
                    DESCRIPTION, CURRENCYCODE, CURRENCYRATE,
-                   DOCAMT, LOCALDOCAMT
+                   DOCAMT, LOCALDOCAMT{unapplied_col}
             FROM {table}
             WHERE CANCELLED=FALSE
         """
@@ -322,6 +326,7 @@ class SourceReader:
                     currency_rate=float(row[7] or 1),
                     amount=float(row[8] or 0),
                     local_amount=float(row[9] or 0),
+                    unapplied_amount=float(row[10] or 0) if has_unapplied else 0.0,
                 )
 
                 # Read detail lines — skip for opening balance docs
@@ -358,7 +363,7 @@ class SourceReader:
             SELECT DOCKEY, DOCNO, DOCDATE, CODE,
                    DESCRIPTION, CURRENCYCODE, CURRENCYRATE,
                    DOCAMT, LOCALDOCAMT,
-                   PAYMENTMETHOD, CHEQUENUMBER
+                   PAYMENTMETHOD, CHEQUENUMBER, UNAPPLIEDAMT
             FROM AR_PM
             WHERE CANCELLED=FALSE
         """
@@ -393,6 +398,7 @@ class SourceReader:
                     local_amount=float(row[8] or 0),
                     payment_method=(row[9] or "").strip(),
                     cheque_no=(row[10] or "").strip(),
+                    unapplied_amount=float(row[11] or 0),
                 )
                 doc.knockoffs = self._read_knockoffs(dockey)
                 documents.append(doc)
@@ -409,7 +415,7 @@ class SourceReader:
             SELECT DOCKEY, DOCNO, DOCDATE, CODE,
                    DESCRIPTION, CURRENCYCODE, CURRENCYRATE,
                    DOCAMT, LOCALDOCAMT,
-                   PAYMENTMETHOD, CHEQUENUMBER
+                   PAYMENTMETHOD, CHEQUENUMBER, UNAPPLIEDAMT
             FROM AR_CF
             WHERE CANCELLED=FALSE
         """
@@ -444,6 +450,7 @@ class SourceReader:
                     local_amount=float(row[8] or 0),
                     payment_method=(row[9] or "").strip(),
                     cheque_no=(row[10] or "").strip(),
+                    unapplied_amount=float(row[11] or 0),
                 )
                 doc.knockoffs = self._read_knockoffs(dockey, from_doc_type="CF")
                 documents.append(doc)

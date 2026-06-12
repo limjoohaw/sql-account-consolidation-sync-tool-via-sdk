@@ -755,6 +755,12 @@ class ConsolWriter:
                         detail_ds.EnableControls()
                     detail_ds.Post()
 
+            # Unapplied remainder for CN (credit not fully knocked off). Set BEFORE
+            # knock-offs so the SDK reserves it. Skip for opening-balance docs
+            # (header-only save); LOCALDOCAMT is derived from the CN detail lines.
+            if doc_type == "CN" and not is_opening_balance:
+                self._apply_unapplied_amount(main_ds, data, set_local_doc_amt=False)
+
             # Knock-off for CN (CN knocks off IV/DN)
             if doc_type == "CN" and data.get("knockoffs"):
                 ko_ds = biz.DataSets.Find("cdsKnockOff")
@@ -812,6 +818,10 @@ class ConsolWriter:
             if data.get("currency_code"):
                 main_ds.FindField("CURRENCYCODE").AsString = data["currency_code"]
                 main_ds.FindField("CURRENCYRATE").AsFloat = data.get("currency_rate", 1.0)
+
+            # Unapplied remainder — reserve BEFORE knock-offs so the SDK only
+            # allocates (DocAmt - unapplied) across the knock-off lines.
+            self._apply_unapplied_amount(main_ds, data)
 
             # Knock-off invoices (CT knocks off IV/DN)
             self._apply_knockoffs(ko_ds, data.get("knockoffs", []), f"CT '{doc_no}'")
@@ -873,6 +883,10 @@ class ConsolWriter:
             if data.get("currency_code"):
                 main_ds.FindField("CURRENCYCODE").AsString = data["currency_code"]
                 main_ds.FindField("CURRENCYRATE").AsFloat = data.get("currency_rate", 1.0)
+
+            # Unapplied remainder — reserve BEFORE knock-offs so the SDK only
+            # allocates (DocAmt - unapplied) across the knock-off lines.
+            self._apply_unapplied_amount(main_ds, data)
 
             # Knock-off invoices
             self._apply_knockoffs(ko_ds, data.get("knockoffs", []), f"PM '{doc_no}'")
@@ -938,6 +952,10 @@ class ConsolWriter:
                 main_ds.FindField("CURRENCYCODE").AsString = data["currency_code"]
                 main_ds.FindField("CURRENCYRATE").AsFloat = data.get("currency_rate", 1.0)
 
+            # Unapplied remainder — reserve BEFORE knock-offs so the SDK only
+            # allocates (DocAmt - unapplied) across the knock-off lines.
+            self._apply_unapplied_amount(main_ds, data)
+
             # Knock-off (CF knocks off CN or PM)
             self._apply_knockoffs(ko_ds, data.get("knockoffs", []), f"CF '{doc_no}'")
 
@@ -967,7 +985,32 @@ class ConsolWriter:
             ko_ds: The cdsKnockOff dataset from the BizObject.
             knockoffs: List of knock-off dicts with doc_type, doc_no, ko_amt, etc.
             context: Document identifier for log messages (e.g. "CN 'A1-CN-001'").
+
+        Raises:
+            RuntimeError: if any knock-off target is not present in the consol DB
+                (i.e. not found in the cdsKnockOff grid). The target document must be
+                imported BEFORE the knock-off can be applied — otherwise SQL Account
+                mis-allocates the payment across the surviving knock-offs and corrupts
+                the amounts (wrong LocalKOAmt / GainLoss, lost unapplied). Failing the
+                whole document keeps the consol ledger consistent; the user re-syncs
+                with a wider date range so the target gets imported.
         """
+        # Pre-check: every target must already exist in the consol knock-off grid.
+        # If a payment in the date range knocks off an older invoice (e.g. an opening
+        # balance) that was filtered out, the target is absent and we must abort the
+        # whole document rather than write a partial, corrupted knock-off.
+        missing = [
+            f"{ko['doc_type']} '{ko['doc_no']}'"
+            for ko in knockoffs
+            if not ko_ds.Locate("DocType;DocNo", [ko["doc_type"], ko["doc_no"]], False, False)
+        ]
+        if missing:
+            raise RuntimeError(
+                f"knock-off target(s) not found in consol DB: {', '.join(missing)}. "
+                f"The target document(s) must be imported before this knock-off — "
+                f"widen the sync date range (Date From) to include them, then re-sync."
+            )
+
         for ko in knockoffs:
             v = [ko["doc_type"], ko["doc_no"]]
             if ko_ds.Locate("DocType;DocNo", v, False, False):
@@ -978,11 +1021,44 @@ class ConsolWriter:
                 ko_ds.FindField("GainLoss").AsFloat = ko.get("gain_loss", 0)
                 ko_ds.FindField("KnockOff").value = True
                 ko_ds.Post()
-            else:
-                if self.logger:
-                    self.logger.warning(
-                        f"{context} knock-off target not found: {ko['doc_type']} '{ko['doc_no']}'"
-                    )
+
+    def _apply_unapplied_amount(self, main_ds, data: dict, set_local_doc_amt: bool = True):
+        """Set the unapplied remainder on a knock-off document header.
+
+        **Must be called BEFORE _apply_knockoffs.** SQL Account balances
+        ``sum(knock-off local) + unapplied = DocAmt local`` at Save. If the unapplied
+        portion is not reserved up front, the SDK auto-allocates the *entire* payment
+        across the knock-off lines — it keeps the KOAmt we set but scales each LocalKOAmt
+        up to consume the full local amount (and back-computes a bogus GainLoss), leaving
+        unapplied = 0. Reserving it first leaves only ``DocAmt - unapplied`` for the
+        knock-offs (e.g. 120 local: reserve 30 → 90 left for 80+10, LocalKOAmt stays
+        80/10, GainLoss 0, unapplied 30).
+
+        Also required for a fully-on-account payment (no knock-offs) into a foreign
+        bank, where the SDK otherwise rejects the doc with "Please specify unapplied
+        amount or knock off documents".
+
+        Only fires when the document carries a non-zero unapplied amount (epsilon
+        guard), so fully-applied documents (the common case) are left untouched.
+
+        Args:
+            main_ds: The MainDataSet of the BizObject (still in insert/edit mode).
+            data: Transformed document dict; uses 'unapplied_amount' (customer ccy)
+                and 'local_amount' (home ccy).
+            set_local_doc_amt: Set LOCALDOCAMT (home-currency header amount) for the
+                fully-on-account case. True for PM/CT/CF, False for CN (LOCALDOCAMT is
+                derived from its detail lines). Skipped when knock-offs exist — there
+                the SDK derives LOCALDOCAMT from DocAmt x rate and forcing it would
+                disturb the knock-off allocation.
+        """
+        unapplied = data.get("unapplied_amount", 0)
+        if abs(unapplied) <= 0.005:
+            return
+        # LOCALDOCAMT only for fully-on-account, header-only docs (no knock-offs).
+        if set_local_doc_amt and not data.get("knockoffs"):
+            main_ds.FindField("LOCALDOCAMT").AsFloat = data.get(
+                "local_amount", data.get("amount", 0))
+        main_ds.FindField("UNAPPLIEDAMT").AsFloat = unapplied
 
     def check_doc_exists(self, biz_key: str, doc_no: str) -> bool:
         """Check if a document already exists in the consol DB."""

@@ -1,3 +1,9 @@
+#### Release Build 6 – 12 Jun 2026
+
+1. Fixed customer payments, credit notes, contras and refunds with an **unapplied amount** failing to post into a **foreign-currency bank** — previously errored with "Please specify unapplied amount or knock off documents"
+2. Fixed **overpayments** (a payment that knocks off invoices *and* leaves an unapplied remainder) — the unapplied amount and the knock-off local amounts now match the source, instead of the SDK inflating the knock-offs to consume the whole payment and zeroing the unapplied amount
+3. Knock-off documents now **fail with a clear, actionable error** when a knocked-off target (e.g. an older opening-balance invoice outside the sync date range) is not present in the consolidation DB — instead of silently writing a corrupted partial knock-off. The message names the missing document and advises widening the Date From range and re-syncing
+
 #### Release Build 5 – 15 Apr 2026
 
 1. Setup tab: Save (Consolidation DB) now auto-runs Test Connection first — both SDK and direct Firebird tests must pass before the settings are saved, preventing invalid configs
